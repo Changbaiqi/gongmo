@@ -19,18 +19,32 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   final DashboardController _dc =
       Get.put(DashboardController(), tag: 'dashboard');
-
-  late final List<Widget> _pages;
+  final PageController _pageCtrl = PageController();
 
   @override
   void initState() {
     super.initState();
     Get.put(FinanceController());
     Get.put(WorkController());
-    _pages = [
-      _buildFinanceTab(),
-      const WorkPage(),
-    ];
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _currentIndex = index);
+  }
+
+  void _onNavTapped(int index) {
+    setState(() => _currentIndex = index);
+    _pageCtrl.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
@@ -50,9 +64,13 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
+      body: PageView(
+        controller: _pageCtrl,
+        onPageChanged: _onPageChanged,
+        children: [
+          _buildFinanceTab(),
+          const WorkPage(),
+        ],
       ),
       floatingActionButton: _currentIndex == 0
           ? SizedBox(
@@ -113,7 +131,7 @@ class _HomePageState extends State<HomePage> {
         isActive ? Theme.of(context).colorScheme.primary : Colors.grey.shade500;
 
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => _onNavTapped(index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
@@ -147,21 +165,59 @@ class _HomePageState extends State<HomePage> {
   Widget _buildFinanceTab() {
     final fc = Get.find<FinanceController>();
 
-    return Obx(() => RefreshIndicator(
-          onRefresh: () async => _dc.refreshData(),
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildCalendar(),
-              const SizedBox(height: 12),
-              _buildSummaryCards(),
-              const SizedBox(height: 12),
-              if (_dc.hasActiveTimer.value) _buildActiveTimerBanner(),
-              const SizedBox(height: 12),
-              _buildFinanceList(fc),
-            ],
-          ),
+    return RefreshIndicator(
+      onRefresh: () async => _dc.refreshData(),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildCalendar(),
+          const SizedBox(height: 12),
+          _buildSummaryCards(),
+          const SizedBox(height: 12),
+          if (_dc.hasActiveTimer.value) _buildActiveTimerBanner(),
+          const SizedBox(height: 4),
+          _buildFinanceHeader(),
+          const SizedBox(height: 8),
+          _buildFinanceListContent(fc),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFinanceHeader() {
+    return Obx(() => Row(
+          children: [
+            Text('全部账目', style: Theme.of(context).textTheme.titleSmall),
+            const Spacer(),
+            Text('收 ¥${_dc.monthIncome.value.toStringAsFixed(2)}',
+                style: TextStyle(
+                    color: Colors.green.shade700,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(width: 16),
+            Text('支 ¥${_dc.monthExpense.value.toStringAsFixed(2)}',
+                style: TextStyle(
+                    color: Colors.red.shade700,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold)),
+          ],
         ));
+  }
+
+  Widget _buildFinanceListContent(FinanceController fc) {
+    final entries = fc.entries;
+    if (entries.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text('暂无账目', style: TextStyle(color: Colors.grey.shade400)),
+        ),
+      );
+    }
+    return Column(
+      children:
+          entries.map((entry) => _buildFinanceItemCard(fc, entry)).toList(),
+    );
   }
 
   Widget _buildCalendar() {
@@ -253,64 +309,42 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildFinanceList(FinanceController fc) {
-    final entries = fc.entries;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('全部账目', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 6),
-        if (entries.isEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child:
-                  Text('暂无账目', style: TextStyle(color: Colors.grey.shade400)),
-            ),
-          )
-        else
-          ...entries.take(20).map((entry) => Card(
-                margin: const EdgeInsets.only(bottom: 6),
-                child: ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: entry.type == FinanceType.income
-                        ? Colors.green.shade100
-                        : Colors.red.shade100,
-                    child: Icon(
-                      entry.type == FinanceType.income
-                          ? Icons.arrow_upward
-                          : Icons.arrow_downward,
-                      size: 16,
-                      color: entry.type == FinanceType.income
-                          ? Colors.green
-                          : Colors.red,
-                    ),
-                  ),
-                  title: Text(
-                    entry.description.isNotEmpty
-                        ? entry.description
-                        : fc.getCategoryName(entry.categoryId),
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  subtitle: Text(DateHelper.formatDisplay(entry.date),
-                      style: const TextStyle(fontSize: 12)),
-                  trailing: Text(
-                    '${entry.type == FinanceType.income ? '+' : '-'}¥${entry.amount.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: entry.type == FinanceType.income
-                          ? Colors.green
-                          : Colors.red,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  onLongPress: () => _confirmDeleteFinance(fc, entry),
-                ),
-              )),
-      ],
+  Widget _buildFinanceItemCard(FinanceController fc, FinanceEntry entry) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListTile(
+        dense: true,
+        leading: CircleAvatar(
+          radius: 16,
+          backgroundColor: entry.type == FinanceType.income
+              ? Colors.green.shade100
+              : Colors.red.shade100,
+          child: Icon(
+            entry.type == FinanceType.income
+                ? Icons.arrow_upward
+                : Icons.arrow_downward,
+            size: 16,
+            color: entry.type == FinanceType.income ? Colors.green : Colors.red,
+          ),
+        ),
+        title: Text(
+          entry.description.isNotEmpty
+              ? entry.description
+              : fc.getCategoryName(entry.categoryId),
+          style: const TextStyle(fontSize: 14),
+        ),
+        subtitle: Text(DateHelper.formatDisplay(entry.date),
+            style: const TextStyle(fontSize: 12)),
+        trailing: Text(
+          '${entry.type == FinanceType.income ? '+' : '-'}¥${entry.amount.toStringAsFixed(2)}',
+          style: TextStyle(
+            fontSize: 14,
+            color: entry.type == FinanceType.income ? Colors.green : Colors.red,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        onLongPress: () => _confirmDeleteFinance(fc, entry),
+      ),
     );
   }
 
