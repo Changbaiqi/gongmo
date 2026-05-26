@@ -21,6 +21,12 @@ class WorkController extends GetxController {
   final currentTimerEntry = Rxn<WorkEntry>();
   final elapsedSeconds = 0.obs;
 
+  final isClockMode = false.obs;
+  final isClockedIn = false.obs;
+  final clockInTime = Rxn<DateTime>();
+  final clockEntry = Rxn<WorkEntry>();
+  final todayClockDuration = Duration.zero.obs;
+
   List<TimerTag> get tags => _storage.timerTags;
 
   Timer? _timer;
@@ -119,6 +125,16 @@ class WorkController extends GetxController {
     if (active != null) {
       isTimerRunning.value = true;
       currentTimerEntry.value = active;
+
+      if (active.projectName == '打卡') {
+        isClockMode.value = true;
+        isClockedIn.value = true;
+        clockInTime.value = active.startTime;
+        clockEntry.value = active;
+        _startTick(active.startTime);
+        return;
+      }
+
       final tagName = active.projectName;
       try {
         _selectedTag = tags.firstWhere((t) => t.name == tagName);
@@ -130,9 +146,66 @@ class WorkController extends GetxController {
     }
   }
 
+  void toggleMode() {
+    if (isTimerRunning.value) return;
+    isClockMode.toggle();
+  }
+
+  void clockIn() {
+    if (isClockedIn.value) return;
+
+    final entry = WorkEntry(
+      id: _uuid.v4(),
+      startTime: DateTime.now(),
+      projectName: '打卡',
+      description: '上班打卡',
+      hourlyRate: 0,
+      status: WorkStatus.inProgress,
+    );
+    _workRepo.save(entry);
+
+    isClockedIn.value = true;
+    clockInTime.value = entry.startTime;
+    clockEntry.value = entry;
+    _startTick(entry.startTime);
+    loadEntries();
+  }
+
+  void clockOut() {
+    if (!isClockedIn.value || clockEntry.value == null) return;
+
+    final entry = clockEntry.value!;
+    final endTime = DateTime.now();
+
+    final updated = entry.copyWith(
+      endTime: endTime,
+      status: WorkStatus.completed,
+      description: '下班打卡',
+    );
+    _workRepo.save(updated);
+
+    _timer?.cancel();
+    _timer = null;
+    isClockedIn.value = false;
+    clockEntry.value = null;
+    elapsedSeconds.value = 0;
+
+    _updateTodayClockDuration();
+    loadEntries();
+  }
+
+  void _updateTodayClockDuration() {
+    final today = _workRepo.getToday().where(
+        (e) => e.projectName == '打卡' && e.status == WorkStatus.completed);
+    final dur = today.fold(
+        Duration.zero, (sum, e) => sum + (e.duration ?? Duration.zero));
+    todayClockDuration.value = dur;
+  }
+
   void loadEntries() {
     entries.value = _workRepo.getAll();
     entries.sort((a, b) => b.startTime.compareTo(a.startTime));
+    _updateTodayClockDuration();
   }
 
   void deleteEntry(String id) {

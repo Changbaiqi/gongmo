@@ -38,15 +38,262 @@ class _WorkPageState extends State<WorkPage>
     return Obx(() => Column(
           children: [
             const SizedBox(height: 8),
-            _buildTagRow(),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _ctrl.isTimerRunning.value
-                  ? _buildRunningView()
-                  : _buildIdleView(),
-            ),
+            _buildModeToggle(),
+            if (_ctrl.isClockMode.value) ...[
+              const SizedBox(height: 12),
+              Expanded(child: _buildClockView()),
+            ] else ...[
+              _buildTagRow(),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _ctrl.isTimerRunning.value
+                    ? _buildRunningView()
+                    : _buildIdleView(),
+              ),
+            ],
           ],
         ));
+  }
+
+  Widget _buildModeToggle() {
+    final color = Theme.of(context).colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _ctrl.toggleMode(),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: !_ctrl.isClockMode.value
+                      ? color.withValues(alpha: 0.1)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color:
+                        !_ctrl.isClockMode.value ? color : Colors.grey.shade300,
+                    width: 1.5,
+                  ),
+                ),
+                child: Center(
+                  child: Text('计时',
+                      style: TextStyle(
+                        color: !_ctrl.isClockMode.value ? color : Colors.grey,
+                        fontWeight: !_ctrl.isClockMode.value
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      )),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _ctrl.toggleMode(),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: _ctrl.isClockMode.value
+                      ? color.withValues(alpha: 0.1)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color:
+                        _ctrl.isClockMode.value ? color : Colors.grey.shade300,
+                    width: 1.5,
+                  ),
+                ),
+                child: Center(
+                  child: Text('打卡',
+                      style: TextStyle(
+                        color: _ctrl.isClockMode.value ? color : Colors.grey,
+                        fontWeight: _ctrl.isClockMode.value
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      )),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClockView() {
+    final now = DateTime.now();
+    final todayRecords = _ctrl.entries
+        .where((e) =>
+            e.projectName == '打卡' &&
+            DateHelper.isSameDay(e.startTime, DateTime.now()))
+        .toList();
+
+    return Column(
+      children: [
+        const Spacer(flex: 2),
+        if (_ctrl.isClockedIn.value) ...[
+          Text(DateHelper.formatTime(DateTime.now()),
+              style: const TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w200,
+                  fontFamily: 'monospace')),
+          const SizedBox(height: 6),
+          Text(
+            '上班: ${DateHelper.formatTime(_ctrl.clockInTime.value!)}',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+          ),
+          const SizedBox(height: 4),
+          Obx(() => Text(
+                '已打卡 ${DateHelper.formatDuration(DateTime.now().difference(_ctrl.clockInTime.value!))}',
+                style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+              )),
+          const SizedBox(height: 32),
+          GestureDetector(
+            onTap: _ctrl.clockOut,
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFEF5350),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFEF5350).withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Text('下班',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ),
+        ] else ...[
+          Text(DateHelper.formatTime(now),
+              style: const TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w200,
+                  fontFamily: 'monospace')),
+          const SizedBox(height: 6),
+          Text(DateHelper.formatDate(now),
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(DateHelper.formatWeekday(now),
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+          const SizedBox(height: 32),
+          GestureDetector(
+            onTap: _ctrl.clockIn,
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF4CAF50),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF4CAF50).withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Text('上班',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ),
+        ],
+        const Spacer(flex: 2),
+        _buildClockRecords(todayRecords),
+      ],
+    );
+  }
+
+  Widget _buildClockRecords(List<WorkEntry> records) {
+    final completed =
+        records.where((e) => e.status == WorkStatus.completed).toList();
+    final totalDur = completed.fold(
+        Duration.zero, (sum, e) => sum + (e.duration ?? Duration.zero));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('今日打卡记录',
+                  style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1)),
+              const Spacer(),
+              if (totalDur > Duration.zero)
+                Text('共 ${DateHelper.formatDuration(totalDur)}',
+                    style: TextStyle(
+                        color: Colors.green.shade600,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (completed.isEmpty)
+            Center(
+              child: Text('暂无记录',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+            ),
+          ...completed.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                          shape: BoxShape.circle, color: Color(0xFF4CAF50)),
+                    ),
+                    const SizedBox(width: 10),
+                    Text('上班 ${DateHelper.formatTime(e.startTime)}',
+                        style: const TextStyle(fontSize: 13)),
+                    const SizedBox(width: 6),
+                    const Text('→', style: TextStyle(color: Colors.grey)),
+                    const SizedBox(width: 6),
+                    Text(
+                        '下班 ${e.endTime != null ? DateHelper.formatTime(e.endTime!) : "..."}',
+                        style: const TextStyle(fontSize: 13)),
+                    const Spacer(),
+                    if (e.duration != null)
+                      Text(DateHelper.formatDuration(e.duration!),
+                          style: TextStyle(
+                              color: Colors.grey.shade500, fontSize: 12)),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => _confirmDelete(e),
+                      child: Icon(Icons.close,
+                          size: 14, color: Colors.grey.shade400),
+                    ),
+                  ],
+                ),
+              )),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
   }
 
   Widget _buildTagRow() {
