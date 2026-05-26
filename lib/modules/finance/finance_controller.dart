@@ -61,6 +61,14 @@ class FinanceController extends GetxController {
     } catch (_) {}
   }
 
+  void saveEntry(FinanceEntry entry) {
+    _financeRepo.save(entry);
+    loadEntries();
+    try {
+      Get.find<DashboardController>(tag: 'dashboard').refreshData();
+    } catch (_) {}
+  }
+
   String getCategoryName(String categoryId) {
     try {
       return categories.firstWhere((c) => c.id == categoryId).name;

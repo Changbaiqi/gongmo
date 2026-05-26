@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/widgets/swipe_action_card.dart';
 import '../../data/models/finance_entry.dart';
 import '../dashboard/dashboard_controller.dart';
 import '../dashboard/widgets/calendar_widget.dart';
@@ -20,6 +21,7 @@ class _HomePageState extends State<HomePage> {
   final DashboardController _dc =
       Get.put(DashboardController(), tag: 'dashboard');
   final PageController _pageCtrl = PageController();
+  final Rxn<DateTime> _selectedDate = Rxn<DateTime>();
 
   @override
   void initState() {
@@ -185,39 +187,64 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildFinanceHeader() {
-    return Obx(() => Row(
-          children: [
-            Text('全部账目', style: Theme.of(context).textTheme.titleSmall),
-            const Spacer(),
-            Text('收 ¥${_dc.monthIncome.value.toStringAsFixed(2)}',
-                style: TextStyle(
-                    color: Colors.green.shade700,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(width: 16),
-            Text('支 ¥${_dc.monthExpense.value.toStringAsFixed(2)}',
-                style: TextStyle(
-                    color: Colors.red.shade700,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ));
+    return Obx(() {
+      final sel = _selectedDate.value;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(sel != null ? '${sel.month}月${sel.day}日 账目' : '全部账目',
+                  style: Theme.of(context).textTheme.titleSmall),
+              if (sel != null) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _selectedDate.value = null,
+                  child:
+                      Icon(Icons.close, size: 16, color: Colors.grey.shade500),
+                ),
+              ],
+              const Spacer(),
+              Text('收 ¥${_dc.monthIncome.value.toStringAsFixed(2)}',
+                  style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(width: 16),
+              Text('支 ¥${_dc.monthExpense.value.toStringAsFixed(2)}',
+                  style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ],
+      );
+    });
   }
 
   Widget _buildFinanceListContent(FinanceController fc) {
-    final entries = fc.entries;
-    if (entries.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text('暂无账目', style: TextStyle(color: Colors.grey.shade400)),
-        ),
+    return Obx(() {
+      final allEntries = fc.entries;
+      final sel = _selectedDate.value;
+      final entries = sel != null
+          ? allEntries.where((e) => DateHelper.isSameDay(e.date, sel)).toList()
+          : allEntries;
+
+      if (entries.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(sel != null ? '该日期暂无账目' : '暂无账目',
+                style: TextStyle(color: Colors.grey.shade400)),
+          ),
+        );
+      }
+      return Column(
+        children:
+            entries.map((entry) => _buildFinanceItemCard(fc, entry)).toList(),
       );
-    }
-    return Column(
-      children:
-          entries.map((entry) => _buildFinanceItemCard(fc, entry)).toList(),
-    );
+    });
   }
 
   Widget _buildCalendar() {
@@ -226,6 +253,14 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(12),
         child: Obx(() => MonthCalendar(
               markedDates: _dc.entryDates.toSet(),
+              onDaySelected: (date) {
+                if (_selectedDate.value != null &&
+                    DateHelper.isSameDay(_selectedDate.value!, date)) {
+                  _selectedDate.value = null;
+                } else {
+                  _selectedDate.value = date;
+                }
+              },
             )),
       ),
     );
@@ -310,40 +345,50 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildFinanceItemCard(FinanceController fc, FinanceEntry entry) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 6),
-      child: ListTile(
-        dense: true,
-        leading: CircleAvatar(
-          radius: 16,
-          backgroundColor: entry.type == FinanceType.income
-              ? Colors.green.shade100
-              : Colors.red.shade100,
-          child: Icon(
-            entry.type == FinanceType.income
-                ? Icons.arrow_upward
-                : Icons.arrow_downward,
-            size: 16,
-            color: entry.type == FinanceType.income ? Colors.green : Colors.red,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: SwipeActionCard(
+        onEdit: () => _showEditFinanceDialog(fc, entry),
+        onDelete: () => _confirmDeleteFinance(fc, entry),
+        child: Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            dense: true,
+            leading: CircleAvatar(
+              radius: 16,
+              backgroundColor: entry.type == FinanceType.income
+                  ? Colors.green.shade100
+                  : Colors.red.shade100,
+              child: Icon(
+                entry.type == FinanceType.income
+                    ? Icons.arrow_upward
+                    : Icons.arrow_downward,
+                size: 16,
+                color: entry.type == FinanceType.income
+                    ? Colors.green
+                    : Colors.red,
+              ),
+            ),
+            title: Text(
+              entry.description.isNotEmpty
+                  ? entry.description
+                  : fc.getCategoryName(entry.categoryId),
+              style: const TextStyle(fontSize: 14),
+            ),
+            subtitle: Text(DateHelper.formatDisplay(entry.date),
+                style: const TextStyle(fontSize: 12)),
+            trailing: Text(
+              '${entry.type == FinanceType.income ? '+' : '-'}¥${entry.amount.toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 14,
+                color: entry.type == FinanceType.income
+                    ? Colors.green
+                    : Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ),
-        title: Text(
-          entry.description.isNotEmpty
-              ? entry.description
-              : fc.getCategoryName(entry.categoryId),
-          style: const TextStyle(fontSize: 14),
-        ),
-        subtitle: Text(DateHelper.formatDisplay(entry.date),
-            style: const TextStyle(fontSize: 12)),
-        trailing: Text(
-          '${entry.type == FinanceType.income ? '+' : '-'}¥${entry.amount.toStringAsFixed(2)}',
-          style: TextStyle(
-            fontSize: 14,
-            color: entry.type == FinanceType.income ? Colors.green : Colors.red,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        onLongPress: () => _confirmDeleteFinance(fc, entry),
       ),
     );
   }
@@ -351,7 +396,8 @@ class _HomePageState extends State<HomePage> {
   void _confirmDeleteFinance(FinanceController fc, FinanceEntry entry) {
     Get.dialog(AlertDialog(
       title: const Text('删除账目'),
-      content: const Text('确定删除这条记录吗？'),
+      content: Text(
+          '确定删除「${entry.description.isNotEmpty ? entry.description : fc.getCategoryName(entry.categoryId)}」吗？'),
       actions: [
         TextButton(onPressed: () => Get.back(), child: const Text('取消')),
         TextButton(
@@ -360,7 +406,126 @@ class _HomePageState extends State<HomePage> {
             _dc.refreshData();
             Get.back();
           },
-          child: const Text('删除', style: TextStyle(color: Colors.red)),
+          child: const Text('确认删除', style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ));
+  }
+
+  void _showEditFinanceDialog(FinanceController fc, FinanceEntry entry) {
+    final amountCtrl = TextEditingController(text: entry.amount.toString());
+    final noteCtrl = TextEditingController(text: entry.description);
+    final isExpense = (entry.type == FinanceType.expense).obs;
+    final selectedCatId = entry.categoryId.obs;
+
+    final cats = fc.categories;
+    final expCats = cats.where((c) => c.type == FinanceType.expense).toList();
+    final incCats = cats.where((c) => c.type == FinanceType.income).toList();
+
+    Get.dialog(AlertDialog(
+      title: const Text('修改账目'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amountCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '金额',
+                prefixText: '¥ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(() => Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('支出'),
+                      selected: isExpense.value,
+                      selectedColor: Colors.red.shade100,
+                      onSelected: (_) {
+                        isExpense.value = true;
+                        if (expCats.isNotEmpty &&
+                            selectedCatId.value.isNotEmpty) {
+                          final cat = cats.cast().firstWhere(
+                              (c) => c.id == selectedCatId.value,
+                              orElse: () => cats.first);
+                          if (cat.type == FinanceType.income) {
+                            selectedCatId.value = expCats.first.id;
+                          }
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    ChoiceChip(
+                      label: const Text('收入'),
+                      selected: !isExpense.value,
+                      selectedColor: Colors.green.shade100,
+                      onSelected: (_) {
+                        isExpense.value = false;
+                        if (incCats.isNotEmpty &&
+                            selectedCatId.value.isNotEmpty) {
+                          final cat = cats.cast().firstWhere(
+                              (c) => c.id == selectedCatId.value,
+                              orElse: () => cats.first);
+                          if (cat.type == FinanceType.expense) {
+                            selectedCatId.value = incCats.first.id;
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                )),
+            const SizedBox(height: 8),
+            Obx(() {
+              final activeCats = isExpense.value ? expCats : incCats;
+              return Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: activeCats.map((cat) {
+                  return ChoiceChip(
+                    label: Text(cat.name, style: const TextStyle(fontSize: 12)),
+                    selected: selectedCatId.value == cat.id,
+                    onSelected: (_) => selectedCatId.value = cat.id,
+                    visualDensity: VisualDensity.compact,
+                  );
+                }).toList(),
+              );
+            }),
+            const SizedBox(height: 8),
+            TextField(
+              controller: noteCtrl,
+              decoration: const InputDecoration(
+                labelText: '备注',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Get.back(), child: const Text('取消')),
+        ElevatedButton(
+          onPressed: () {
+            final amount = double.tryParse(amountCtrl.text);
+            if (amount == null || amount <= 0) {
+              Get.snackbar('提示', '请输入有效金额');
+              return;
+            }
+            entry.amount = amount;
+            entry.type =
+                isExpense.value ? FinanceType.expense : FinanceType.income;
+            entry.categoryId = selectedCatId.value;
+            entry.description = noteCtrl.text;
+            entry.updatedAt = DateTime.now();
+            fc.saveEntry(entry);
+            _dc.refreshData();
+            Get.back();
+          },
+          child: const Text('保存修改'),
         ),
       ],
     ));

@@ -43,6 +43,7 @@ class _WorkPageState extends State<WorkPage>
               const SizedBox(height: 12),
               Expanded(child: _buildClockView()),
             ] else ...[
+              const SizedBox(height: 16),
               _buildTagRow(),
               const SizedBox(height: 12),
               Expanded(
@@ -301,7 +302,7 @@ class _WorkPageState extends State<WorkPage>
       height: 40,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         children: [
           ..._ctrl.tags.map((tag) =>
               _buildTagChip(tag, _ctrl.currentTimerTag.value?.id == tag.id)),
