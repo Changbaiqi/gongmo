@@ -48,11 +48,9 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 24),
           _buildSectionTitle('分类管理'),
           Card(
-            child: Obx(() {
-              final categories = ctrl.categories;
-              return Column(
-                children: [
-                  ...categories.map((cat) => ListTile(
+            child: Column(
+              children: ctrl.categories
+                  .map((cat) => ListTile(
                         leading: Icon(
                           cat.type == FinanceType.income
                               ? Icons.arrow_upward
@@ -62,10 +60,9 @@ class SettingsPage extends StatelessWidget {
                               : Colors.red,
                         ),
                         title: Text(cat.name),
-                      )),
-                ],
-              );
-            }),
+                      ))
+                  .toList(),
+            ),
           ),
           const SizedBox(height: 24),
           _buildSectionTitle('关于'),
