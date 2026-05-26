@@ -54,83 +54,86 @@ class _SwipeActionCardState extends State<SwipeActionCard>
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onHorizontalDragEnd: (details) {
-        if (details.primaryVelocity != null) {
-          if (details.primaryVelocity! < -200 && !_isOpen) {
-            _open();
-          } else if (details.primaryVelocity! > 200 && _isOpen) {
-            _close();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: GestureDetector(
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity != null) {
+            if (details.primaryVelocity! < -200 && !_isOpen) {
+              _open();
+            } else if (details.primaryVelocity! > 200 && _isOpen) {
+              _close();
+            }
           }
-        }
-      },
-      onTap: () {
-        if (_isOpen) _close();
-      },
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    _close();
-                    widget.onEdit();
-                  },
-                  child: Container(
-                    width: 70,
-                    color: Colors.blue,
-                    alignment: Alignment.center,
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.edit_outlined,
-                            color: Colors.white, size: 20),
-                        SizedBox(height: 2),
-                        Text('修改',
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 11)),
-                      ],
+        },
+        onTap: () {
+          if (_isOpen) _close();
+        },
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      _close();
+                      widget.onEdit();
+                    },
+                    child: Container(
+                      width: 70,
+                      color: Colors.blue,
+                      alignment: Alignment.center,
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.edit_outlined,
+                              color: Colors.white, size: 20),
+                          SizedBox(height: 2),
+                          Text('修改',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 11)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                GestureDetector(
-                  onTap: () {
-                    _close();
-                    widget.onDelete();
-                  },
-                  child: Container(
-                    width: 70,
-                    color: Colors.red,
-                    alignment: Alignment.center,
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.delete_outline,
-                            color: Colors.white, size: 20),
-                        SizedBox(height: 2),
-                        Text('删除',
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 11)),
-                      ],
+                  GestureDetector(
+                    onTap: () {
+                      _close();
+                      widget.onDelete();
+                    },
+                    child: Container(
+                      width: 70,
+                      color: Colors.red,
+                      alignment: Alignment.center,
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.delete_outline,
+                              color: Colors.white, size: 20),
+                          SizedBox(height: 2),
+                          Text('删除',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 11)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          AnimatedBuilder(
-            animation: _openAnim,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(-(_actionWidth - _openAnim.value), 0),
-                child: child,
-              );
-            },
-            child: widget.child,
-          ),
-        ],
+            AnimatedBuilder(
+              animation: _openAnim,
+              builder: (context, child) {
+                return Transform.translate(
+                  offset: Offset(-(_actionWidth - _openAnim.value), 0),
+                  child: child,
+                );
+              },
+              child: widget.child,
+            ),
+          ],
+        ),
       ),
     );
   }

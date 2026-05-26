@@ -348,6 +348,7 @@ class _HomePageState extends State<HomePage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: SwipeActionCard(
+        key: ValueKey(entry.id),
         onEdit: () => _showEditFinanceDialog(fc, entry),
         onDelete: () => _confirmDeleteFinance(fc, entry),
         child: Card(
@@ -404,6 +405,7 @@ class _HomePageState extends State<HomePage> {
           onPressed: () {
             fc.deleteEntry(entry.id);
             _dc.refreshData();
+            if (mounted) setState(() {});
             Get.back();
           },
           child: const Text('确认删除', style: TextStyle(color: Colors.red)),
