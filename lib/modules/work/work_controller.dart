@@ -17,6 +17,7 @@ class WorkController extends GetxController {
 
   final entries = <WorkEntry>[].obs;
   final isTimerRunning = false.obs;
+  final isPaused = false.obs;
   final currentTimerTag = Rxn<TimerTag>();
   final currentTimerEntry = Rxn<WorkEntry>();
   final elapsedSeconds = 0.obs;
@@ -63,8 +64,9 @@ class WorkController extends GetxController {
     _workRepo.save(entry);
 
     isTimerRunning.value = true;
+    isPaused.value = false;
     currentTimerEntry.value = entry;
-    _startTick(entry.startTime);
+    _startTick();
     loadEntries();
     _refreshDashboard();
   }
@@ -75,7 +77,7 @@ class WorkController extends GetxController {
     final entry = currentTimerEntry.value!;
     final tag = _selectedTag;
     final endTime = DateTime.now();
-    final duration = endTime.difference(entry.startTime);
+    final duration = entry.liveElapsed;
     final hours = duration.inSeconds / 3600.0;
 
     double? income;
@@ -87,6 +89,7 @@ class WorkController extends GetxController {
       endTime: endTime,
       status: WorkStatus.completed,
       income: income,
+      clearPausedAt: true,
     );
     _workRepo.save(updated);
 
@@ -106,18 +109,57 @@ class WorkController extends GetxController {
     _timer?.cancel();
     _timer = null;
     isTimerRunning.value = false;
+    isPaused.value = false;
     currentTimerEntry.value = null;
     elapsedSeconds.value = 0;
     loadEntries();
     _refreshDashboard();
   }
 
-  void _startTick(DateTime start) {
+  /// 暂停计时：冻结显示，累计已计时长并持久化
+  void pauseTimer() {
+    if (!isTimerRunning.value || isPaused.value) return;
+    final entry = currentTimerEntry.value;
+    if (entry == null) return;
+    final now = DateTime.now();
+    final updated = entry.copyWith(
+      accumulatedSeconds:
+          entry.accumulatedSeconds + now.difference(entry.startTime).inSeconds,
+      pausedAt: now,
+    );
+    _workRepo.save(updated);
+    currentTimerEntry.value = updated;
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      elapsedSeconds.value = DateTime.now().difference(start).inSeconds;
-    });
-    elapsedSeconds.value = DateTime.now().difference(start).inSeconds;
+    _timer = null;
+    isPaused.value = true;
+  }
+
+  /// 继续计时：从暂停时刻开启新分段
+  void resumeTimer() {
+    if (!isTimerRunning.value || !isPaused.value) return;
+    final entry = currentTimerEntry.value;
+    if (entry == null) return;
+    final updated = entry.copyWith(
+      startTime: DateTime.now(),
+      clearPausedAt: true,
+    );
+    _workRepo.save(updated);
+    currentTimerEntry.value = updated;
+    isPaused.value = false;
+    _startTick();
+  }
+
+  void _startTick() {
+    _timer?.cancel();
+    void tick() {
+      final e = currentTimerEntry.value;
+      if (e != null) {
+        elapsedSeconds.value = e.liveElapsed.inSeconds;
+      }
+    }
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+    tick();
   }
 
   void _checkActiveTimer() {
@@ -131,7 +173,7 @@ class WorkController extends GetxController {
         isClockedIn.value = true;
         clockInTime.value = active.startTime;
         clockEntry.value = active;
-        _startTick(active.startTime);
+        _startTick();
         return;
       }
 
@@ -142,7 +184,13 @@ class WorkController extends GetxController {
       } catch (_) {
         currentTimerTag.value = null;
       }
-      _startTick(active.startTime);
+      if (active.pausedAt != null) {
+        isPaused.value = true;
+        elapsedSeconds.value = active.liveElapsed.inSeconds;
+      } else {
+        isPaused.value = false;
+        _startTick();
+      }
     }
   }
 
@@ -167,7 +215,7 @@ class WorkController extends GetxController {
     isClockedIn.value = true;
     clockInTime.value = entry.startTime;
     clockEntry.value = entry;
-    _startTick(entry.startTime);
+    _startTick();
     loadEntries();
   }
 

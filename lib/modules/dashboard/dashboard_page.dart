@@ -122,8 +122,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildActiveTimerCard() {
     final entry = _ctrl.activeTimerEntry.value;
     if (entry == null) return const SizedBox.shrink();
-    final elapsed = DateHelper.formatDurationShort(
-        DateTime.now().difference(entry.startTime));
+    final elapsed = DateHelper.formatDurationShort(entry.liveElapsed);
     return Card(
       color: Colors.blue.shade50,
       child: Padding(

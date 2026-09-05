@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../core/utils/icon_utils.dart';
 import '../../data/models/finance_entry.dart';
 import 'settings_controller.dart';
 
@@ -50,17 +51,34 @@ class SettingsPage extends StatelessWidget {
           Card(
             child: Column(
               children: ctrl.categories
-                  .map((cat) => ListTile(
-                        leading: Icon(
-                          cat.type == FinanceType.income
-                              ? Icons.arrow_upward
-                              : Icons.arrow_downward,
-                          color: cat.type == FinanceType.income
-                              ? Colors.green
-                              : Colors.red,
+                  .map((cat) {
+                    final color = IconUtils.hex(cat.color);
+                    return ListTile(
+                      leading: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.13),
+                          shape: BoxShape.circle,
                         ),
-                        title: Text(cat.name),
-                      ))
+                        child: Icon(
+                          IconUtils.category(cat.icon),
+                          size: 17,
+                          color: color,
+                        ),
+                      ),
+                      title: Text(cat.name),
+                      trailing: Text(
+                        cat.type == FinanceType.income ? '收入' : '支出',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cat.type == FinanceType.income
+                              ? Colors.green.shade600
+                              : Colors.red.shade600,
+                        ),
+                      ),
+                    );
+                  })
                   .toList(),
             ),
           ),

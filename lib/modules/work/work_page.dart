@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/widgets/flip_clock.dart';
 import '../../data/models/work_entry.dart';
 import '../../data/models/timer_tag.dart';
 import '../../data/services/storage_service.dart';
@@ -18,6 +21,9 @@ class _WorkPageState extends State<WorkPage>
   final WorkController _ctrl = Get.put(WorkController());
   late AnimationController _pulseCtrl;
 
+  DateTime _now = DateTime.now();
+  Timer? _clockTimer;
+
   @override
   void initState() {
     super.initState();
@@ -25,10 +31,14 @@ class _WorkPageState extends State<WorkPage>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
   }
 
   @override
   void dispose() {
+    _clockTimer?.cancel();
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -57,77 +67,60 @@ class _WorkPageState extends State<WorkPage>
   }
 
   Widget _buildModeToggle() {
-    final color = Theme.of(context).colorScheme.primary;
+    final cs = Theme.of(context).colorScheme;
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(20));
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _ctrl.toggleMode(),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: !_ctrl.isClockMode.value
-                      ? color.withValues(alpha: 0.1)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color:
-                        !_ctrl.isClockMode.value ? color : Colors.grey.shade300,
-                    width: 1.5,
-                  ),
-                ),
-                child: Center(
-                  child: Text('计时',
-                      style: TextStyle(
-                        color: !_ctrl.isClockMode.value ? color : Colors.grey,
-                        fontWeight: !_ctrl.isClockMode.value
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      )),
-                ),
-              ),
-            ),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.4),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _ctrl.toggleMode(),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: _ctrl.isClockMode.value
-                      ? color.withValues(alpha: 0.1)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color:
-                        _ctrl.isClockMode.value ? color : Colors.grey.shade300,
-                    width: 1.5,
-                  ),
-                ),
-                child: Center(
-                  child: Text('打卡',
-                      style: TextStyle(
-                        color: _ctrl.isClockMode.value ? color : Colors.grey,
-                        fontWeight: _ctrl.isClockMode.value
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      )),
-                ),
-              ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _modeSegment('计时', !_ctrl.isClockMode.value, cs, shape),
             ),
-          ),
-        ],
+            Expanded(
+              child: _modeSegment('打卡', _ctrl.isClockMode.value, cs, shape),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _modeSegment(String label, bool active, ColorScheme cs, ShapeBorder shape) {
+    return GestureDetector(
+      onTap: () {
+        if (!active) _ctrl.toggleMode();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: ShapeDecoration(
+          color: active ? cs.primary.withValues(alpha: 0.12) : Colors.transparent,
+          shape: shape,
+        ),
+        child: Center(
+          child: Text(label,
+              style: TextStyle(
+                color: active ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.7),
+                fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                fontSize: 14,
+              )),
+        ),
       ),
     );
   }
 
   Widget _buildClockView() {
-    final now = DateTime.now();
+    final cs = Theme.of(context).colorScheme;
     final todayRecords = _ctrl.entries
         .where((e) =>
             e.projectName == '打卡' &&
@@ -138,84 +131,45 @@ class _WorkPageState extends State<WorkPage>
       children: [
         const Spacer(flex: 2),
         if (_ctrl.isClockedIn.value) ...[
-          Text(DateHelper.formatTime(DateTime.now()),
-              style: const TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.w200,
-                  fontFamily: 'monospace')),
+          _bigClock(),
           const SizedBox(height: 6),
-          Text(
-            '上班: ${DateHelper.formatTime(_ctrl.clockInTime.value!)}',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
-          ),
+          Text('上班: ${DateHelper.formatTime(_ctrl.clockInTime.value!)}',
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15)),
           const SizedBox(height: 4),
           Obx(() => Text(
                 '已打卡 ${DateHelper.formatDuration(DateTime.now().difference(_ctrl.clockInTime.value!))}',
-                style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                style: TextStyle(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                    fontSize: 13),
               )),
           const SizedBox(height: 32),
-          GestureDetector(
-            onTap: _ctrl.clockOut,
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFEF5350),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFEF5350).withValues(alpha: 0.3),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Text('下班',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
-              ),
-            ),
+          _clockButton(
+            label: '下班',
+            isStop: true,
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              _ctrl.clockOut();
+            },
           ),
         ] else ...[
-          Text(DateHelper.formatTime(now),
-              style: const TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.w200,
-                  fontFamily: 'monospace')),
+          _bigClock(),
           const SizedBox(height: 6),
-          Text(DateHelper.formatDate(now),
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
+          Text(DateHelper.formatDate(_now),
+              style: TextStyle(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                  fontSize: 15)),
           const SizedBox(height: 4),
-          Text(DateHelper.formatWeekday(now),
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+          Text(DateHelper.formatWeekday(_now),
+              style: TextStyle(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                  fontSize: 13)),
           const SizedBox(height: 32),
-          GestureDetector(
-            onTap: _ctrl.clockIn,
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF4CAF50),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF4CAF50).withValues(alpha: 0.3),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Text('上班',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
-              ),
-            ),
+          _clockButton(
+            label: '上班',
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              _ctrl.clockIn();
+            },
           ),
         ],
         const Spacer(flex: 2),
@@ -224,7 +178,53 @@ class _WorkPageState extends State<WorkPage>
     );
   }
 
+  Widget _bigClock() {
+    return FlipClock(time: _now);
+  }
+
+  Widget _clockButton({
+    required String label,
+    required VoidCallback onTap,
+    bool isStop = false,
+  }) {
+    final color = isStop ? const Color(0xFFEF5350) : const Color(0xFF4CAF50);
+    final gradient = isStop
+        ? const [Color(0xFFE53935), Color(0xFFC62828)]
+        : const [Color(0xFF43A047), Color(0xFF2E7D32)];
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 84,
+        height: 84,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradient,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.35),
+              blurRadius: 18,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(label,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2)),
+        ),
+      ),
+    );
+  }
+
   Widget _buildClockRecords(List<WorkEntry> records) {
+    final cs = Theme.of(context).colorScheme;
     final completed =
         records.where((e) => e.status == WorkStatus.completed).toList();
     final totalDur = completed.fold(
@@ -239,7 +239,7 @@ class _WorkPageState extends State<WorkPage>
             children: [
               Text('今日打卡记录',
                   style: TextStyle(
-                      color: Colors.grey.shade500,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1)),
@@ -256,7 +256,9 @@ class _WorkPageState extends State<WorkPage>
           if (completed.isEmpty)
             Center(
               child: Text('暂无记录',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                  style: TextStyle(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                      fontSize: 12)),
             ),
           ...completed.map((e) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),
@@ -272,7 +274,8 @@ class _WorkPageState extends State<WorkPage>
                     Text('上班 ${DateHelper.formatTime(e.startTime)}',
                         style: const TextStyle(fontSize: 13)),
                     const SizedBox(width: 6),
-                    const Text('→', style: TextStyle(color: Colors.grey)),
+                    Icon(Icons.arrow_forward_rounded,
+                        size: 12, color: cs.onSurfaceVariant),
                     const SizedBox(width: 6),
                     Text(
                         '下班 ${e.endTime != null ? DateHelper.formatTime(e.endTime!) : "..."}',
@@ -281,12 +284,13 @@ class _WorkPageState extends State<WorkPage>
                     if (e.duration != null)
                       Text(DateHelper.formatDuration(e.duration!),
                           style: TextStyle(
-                              color: Colors.grey.shade500, fontSize: 12)),
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                              fontSize: 12)),
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () => _confirmDelete(e),
-                      child: Icon(Icons.close,
-                          size: 14, color: Colors.grey.shade400),
+                      child: Icon(Icons.close_rounded,
+                          size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
                     ),
                   ],
                 ),
@@ -381,8 +385,13 @@ class _WorkPageState extends State<WorkPage>
   Widget _buildRunningView() {
     final tag = _ctrl.currentTimerTag.value;
     final color = tag != null ? _parseColor(tag.color) : Colors.grey;
+    final paused = _ctrl.isPaused.value;
 
-    _pulseCtrl.repeat(reverse: true);
+    if (paused) {
+      _pulseCtrl.stop();
+    } else {
+      _pulseCtrl.repeat(reverse: true);
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -412,33 +421,80 @@ class _WorkPageState extends State<WorkPage>
               ),
             ),
           const Spacer(flex: 3),
-          _buildAnimatedRing(color),
-          const Spacer(flex: 3),
-          Text(DateHelper.formatTime(DateTime.now()),
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 15)),
-          const SizedBox(height: 28),
-          GestureDetector(
-            onTap: _ctrl.stopTimer,
-            child: Container(
-              width: 60,
-              height: 60,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFFEF5350),
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x40EF5350),
-                    blurRadius: 16,
-                    offset: Offset(0, 4),
-                  ),
-                ],
+          Opacity(
+            opacity: paused ? 0.55 : 1,
+            child: _buildAnimatedRing(color),
+          ),
+          if (paused) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child:
-                  const Icon(Icons.stop_rounded, size: 32, color: Colors.white),
+              child: Text('已暂停',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
+          ],
+          const Spacer(flex: 3),
+          Text(DateHelper.formatTime(_now),
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 15)),
+          const SizedBox(height: 28),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _roundAction(
+                icon: paused
+                    ? Icons.play_arrow_rounded
+                    : Icons.pause_rounded,
+                color: const Color(0xFF43A047),
+                onTap: paused ? _ctrl.resumeTimer : _ctrl.pauseTimer,
+              ),
+              const SizedBox(width: 28),
+              _roundAction(
+                icon: Icons.stop_rounded,
+                color: const Color(0xFFEF5350),
+                onTap: _ctrl.stopTimer,
+              ),
+            ],
           ),
           const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+
+  Widget _roundAction({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        onTap();
+      },
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Icon(icon, size: 30, color: Colors.white),
       ),
     );
   }
@@ -482,6 +538,7 @@ class _WorkPageState extends State<WorkPage>
                     fontWeight: FontWeight.w200,
                     fontFamily: 'monospace',
                     letterSpacing: 2,
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 );
               }),
@@ -501,7 +558,10 @@ class _WorkPageState extends State<WorkPage>
       children: [
         const Spacer(flex: 3),
         GestureDetector(
-          onTap: _ctrl.startTimer,
+          onTap: () {
+            HapticFeedback.mediumImpact();
+            _ctrl.startTimer();
+          },
           child: Container(
             width: 160,
             height: 160,
@@ -540,7 +600,9 @@ class _WorkPageState extends State<WorkPage>
           const SizedBox(height: 14),
           Text(
             '今日${tag.name}: ${DateHelper.formatDuration(todayDuration)}',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12),
           ),
         ],
         const Spacer(flex: 3),
@@ -550,6 +612,7 @@ class _WorkPageState extends State<WorkPage>
   }
 
   Widget _buildTodaySessions() {
+    final cs = Theme.of(context).colorScheme;
     final todayEntries = _ctrl.entries
         .where((e) => DateHelper.isSameDay(e.startTime, DateTime.now()))
         .toList();
@@ -563,7 +626,7 @@ class _WorkPageState extends State<WorkPage>
             padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Text('今日记录',
                 style: TextStyle(
-                  color: Colors.grey.shade500,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 1,
@@ -575,7 +638,8 @@ class _WorkPageState extends State<WorkPage>
               child: Center(
                   child: Text('暂无记录',
                       style: TextStyle(
-                          color: Colors.grey.shade400, fontSize: 12))),
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                          fontSize: 12))),
             ),
           ...todayEntries.map(_buildSessionItem),
           const SizedBox(height: 12),
@@ -585,6 +649,7 @@ class _WorkPageState extends State<WorkPage>
   }
 
   Widget _buildSessionItem(WorkEntry entry) {
+    final cs = Theme.of(context).colorScheme;
     final tag = _ctrl.tags.cast<TimerTag?>().firstWhere(
           (t) => t?.name == entry.projectName,
           orElse: () => null,
@@ -613,12 +678,15 @@ class _WorkPageState extends State<WorkPage>
           ),
           if (entry.duration != null)
             Text(DateHelper.formatDuration(entry.duration!),
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                style: TextStyle(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                    fontSize: 12)),
           if (entry.endTime != null) ...[
             const SizedBox(width: 8),
             GestureDetector(
               onTap: () => _confirmDelete(entry),
-              child: Icon(Icons.close, size: 14, color: Colors.grey.shade400),
+              child: Icon(Icons.close_rounded,
+                  size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
             ),
           ],
         ],
@@ -658,7 +726,6 @@ class _WorkPageState extends State<WorkPage>
             autofocus: true,
             decoration: const InputDecoration(
               labelText: '标签名称',
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 12),
@@ -675,7 +742,6 @@ class _WorkPageState extends State<WorkPage>
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: '时薪 (¥/小时)',
-                border: OutlineInputBorder(),
               ),
             );
           }),
@@ -715,7 +781,6 @@ class _WorkPageState extends State<WorkPage>
             controller: nameCtrl,
             decoration: const InputDecoration(
               labelText: '标签名称',
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 12),
@@ -732,7 +797,6 @@ class _WorkPageState extends State<WorkPage>
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: '时薪 (¥/小时)',
-                border: OutlineInputBorder(),
               ),
             );
           }),

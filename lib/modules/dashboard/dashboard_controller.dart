@@ -19,7 +19,6 @@ class DashboardController extends GetxController {
   final entryDates = <DateTime>{}.obs;
 
   Timer? _timerTick;
-  DateTime? _activeStartTime;
 
   @override
   void onInit() {
@@ -37,7 +36,6 @@ class DashboardController extends GetxController {
     if (active != null) {
       hasActiveTimer.value = true;
       activeTimerEntry.value = active;
-      _activeStartTime = active.startTime;
       _startTicking();
     } else {
       hasActiveTimer.value = false;
@@ -77,9 +75,10 @@ class DashboardController extends GetxController {
   void _startTicking() {
     _timerTick?.cancel();
     _timerTick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_activeStartTime != null) {
-        todayWorkDuration.value = _workRepo.getTodayTotalDuration() +
-            DateTime.now().difference(_activeStartTime!);
+      final e = activeTimerEntry.value;
+      if (e != null) {
+        todayWorkDuration.value =
+            _workRepo.getTodayTotalDuration() + e.liveElapsed;
       }
     });
   }

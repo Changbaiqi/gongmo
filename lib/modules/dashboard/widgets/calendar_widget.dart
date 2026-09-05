@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 class MonthCalendar extends StatefulWidget {
   final DateTime initialMonth;
   final Set<DateTime> markedDates;
+  final DateTime? selectedDate;
   final ValueChanged<DateTime>? onDaySelected;
 
   MonthCalendar({
     super.key,
     DateTime? initialMonth,
     this.markedDates = const {},
+    this.selectedDate,
     this.onDaySelected,
   }) : initialMonth = initialMonth ?? DateTime.now();
 
@@ -40,40 +42,46 @@ class _MonthCalendarState extends State<MonthCalendar> {
     });
   }
 
-  bool _isToday(DateTime date) {
-    final now = DateTime.now();
-    return date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day;
-  }
+  static int _dayKey(DateTime date) =>
+      date.year * 10000 + date.month * 100 + date.day;
 
-  bool _isMarked(DateTime date) {
-    return widget.markedDates.any((d) =>
-        d.year == date.year && d.month == date.month && d.day == date.day);
-  }
+  bool _isToday(DateTime date) => _dayKey(date) == _dayKey(DateTime.now());
+
+  bool _isSelected(DateTime date) =>
+      widget.selectedDate != null &&
+      _dayKey(date) == _dayKey(widget.selectedDate!);
+
+  bool _isMarked(DateTime date) => widget.markedDates.any(
+      (d) => d.year == date.year && d.month == date.month && d.day == date.day);
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final monthStr = '${_displayMonth.year}年${_displayMonth.month}月';
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            const SizedBox(width: 8),
+            Text(monthStr,
+                style:
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+            const Spacer(),
             IconButton(
-              icon: const Icon(Icons.chevron_left, size: 20),
+              icon: Icon(Icons.chevron_left_rounded,
+                  size: 22, color: cs.onSurfaceVariant),
               onPressed: _prevMonth,
             ),
-            Text(monthStr, style: const TextStyle(fontWeight: FontWeight.bold)),
             IconButton(
-              icon: const Icon(Icons.chevron_right, size: 20),
+              icon: Icon(Icons.chevron_right_rounded,
+                  size: 22, color: cs.onSurfaceVariant),
               onPressed: _nextMonth,
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Row(
           children: _weekDays.map((d) {
             return Expanded(
@@ -81,7 +89,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
                 child: Text(d,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey.shade500,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontWeight: FontWeight.w500,
                     )),
               ),
@@ -95,6 +103,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   }
 
   Widget _buildDaysGrid() {
+    final cs = Theme.of(context).colorScheme;
     final firstDay = DateTime(_displayMonth.year, _displayMonth.month, 1);
     final lastDay = DateTime(_displayMonth.year, _displayMonth.month + 1, 0);
     final daysInMonth = lastDay.day;
@@ -110,41 +119,60 @@ class _MonthCalendarState extends State<MonthCalendar> {
     for (int day = 1; day <= daysInMonth; day++) {
       final date = DateTime(_displayMonth.year, _displayMonth.month, day);
       final isToday = _isToday(date);
+      final isSelected = _isSelected(date);
       final hasEntry = _isMarked(date);
+      final isWeekend = date.weekday == DateTime.saturday ||
+          date.weekday == DateTime.sunday;
 
       cells.add(GestureDetector(
         onTap: () => widget.onDaySelected?.call(date),
-        child: Container(
-          margin: const EdgeInsets.all(1),
-          decoration: BoxDecoration(
-            color:
-                isToday ? Theme.of(context).colorScheme.primaryContainer : null,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$day',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                  color: isToday
-                      ? Theme.of(context).colorScheme.onPrimaryContainer
-                      : null,
-                ),
-              ),
-              if (hasEntry)
-                Container(
-                  width: 5,
-                  height: 5,
-                  margin: const EdgeInsets.only(top: 1),
-                  decoration: const BoxDecoration(
-                    color: Colors.orange,
-                    shape: BoxShape.circle,
+        child: Center(
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: isToday
+                  ? cs.primary
+                  : isSelected
+                      ? cs.primary.withValues(alpha: 0.12)
+                      : Colors.transparent,
+              shape: BoxShape.circle,
+              border: isSelected && !isToday
+                  ? Border.all(color: cs.primary, width: 1.4)
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                Text(
+                  '$day',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight:
+                        isToday || isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isToday
+                        ? cs.onPrimary
+                        : isWeekend
+                            ? cs.onSurfaceVariant.withValues(alpha: 0.6)
+                            : cs.onSurface,
                   ),
                 ),
-            ],
+                if (hasEntry)
+                  Positioned(
+                    bottom: -3,
+                    child: Container(
+                      width: 4.5,
+                      height: 4.5,
+                      decoration: BoxDecoration(
+                        color: isToday ? cs.onPrimary : Colors.orange,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ));
@@ -158,7 +186,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       crossAxisCount: 7,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 1.1,
+      childAspectRatio: 1.0,
       children: cells,
     );
   }

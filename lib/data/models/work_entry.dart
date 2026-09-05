@@ -13,6 +13,12 @@ class WorkEntry {
   DateTime createdAt;
   DateTime updatedAt;
 
+  /// 暂停前已累计的秒数（不含当前进行中的分段）
+  int accumulatedSeconds;
+
+  /// 非空表示当前处于暂停状态，值为暂停时刻
+  DateTime? pausedAt;
+
   WorkEntry({
     required this.id,
     required this.startTime,
@@ -25,14 +31,25 @@ class WorkEntry {
     this.status = WorkStatus.inProgress,
     DateTime? createdAt,
     DateTime? updatedAt,
+    this.accumulatedSeconds = 0,
+    this.pausedAt,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
+  /// 已结束记录的总时长（含暂停前累计）
   Duration? get duration {
     if (endTime != null) {
-      return endTime!.difference(startTime);
+      return Duration(seconds: accumulatedSeconds) +
+          endTime!.difference(startTime);
     }
     return null;
+  }
+
+  /// 进行中记录的实时时长（暂停时冻结）
+  Duration get liveElapsed {
+    final base = Duration(seconds: accumulatedSeconds);
+    if (pausedAt != null) return base;
+    return base + DateTime.now().difference(startTime);
   }
 
   factory WorkEntry.fromJson(Map<String, dynamic> json) {
@@ -66,6 +83,8 @@ class WorkEntry {
       'status': status.index,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'accumulatedSeconds': accumulatedSeconds,
+      'pausedAt': pausedAt?.toIso8601String(),
     };
   }
 
@@ -78,6 +97,9 @@ class WorkEntry {
     double? income,
     String? financeEntryId,
     WorkStatus? status,
+    int? accumulatedSeconds,
+    DateTime? pausedAt,
+    bool clearPausedAt = false,
   }) {
     return WorkEntry(
       id: id,
@@ -91,6 +113,8 @@ class WorkEntry {
       status: status ?? this.status,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
+      accumulatedSeconds: accumulatedSeconds ?? this.accumulatedSeconds,
+      pausedAt: clearPausedAt ? null : (pausedAt ?? this.pausedAt),
     );
   }
 }
