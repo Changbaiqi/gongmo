@@ -1,6 +1,33 @@
 import 'package:flutter/material.dart';
 
 class IconUtils {
+  /// 标签可选图标集
+  static const Map<String, IconData> tagIcons = {
+    'work': Icons.work_outline_rounded,
+    'school': Icons.school_outlined,
+    'menu_book': Icons.menu_book_outlined,
+    'code': Icons.code_rounded,
+    'brush': Icons.brush_outlined,
+    'music_note': Icons.music_note_outlined,
+    'self_improvement': Icons.self_improvement,
+    'fitness_center': Icons.fitness_center_outlined,
+    'favorite': Icons.favorite_outline_rounded,
+    'timer': Icons.timer_outlined,
+    'flight': Icons.flight_takeoff_rounded,
+    'directions_car': Icons.directions_car_rounded,
+    'local_cafe': Icons.local_cafe_outlined,
+    'restaurant': Icons.restaurant_rounded,
+    'shopping_cart': Icons.shopping_cart_outlined,
+    'sports_esports': Icons.sports_esports_outlined,
+    'savings': Icons.savings_outlined,
+    'home': Icons.home_outlined,
+    'groups': Icons.groups_outlined,
+    'label': Icons.label_outline_rounded,
+  };
+
+  static IconData tag(String name) =>
+      tagIcons[name] ?? Icons.label_outline_rounded;
+
   static IconData category(String name) {
     switch (name) {
       case 'work':
@@ -19,25 +46,6 @@ class IconUtils {
         return Icons.computer_outlined;
       case 'more_horiz':
         return Icons.more_horiz_rounded;
-      default:
-        return Icons.label_outline_rounded;
-    }
-  }
-
-  static IconData tag(String name) {
-    switch (name) {
-      case 'work':
-        return Icons.work_outline_rounded;
-      case 'school':
-        return Icons.school_outlined;
-      case 'self_improvement':
-        return Icons.self_improvement;
-      case 'fitness_center':
-        return Icons.fitness_center_outlined;
-      case 'menu_book':
-        return Icons.menu_book_outlined;
-      case 'timer':
-        return Icons.timer_outlined;
       default:
         return Icons.label_outline_rounded;
     }

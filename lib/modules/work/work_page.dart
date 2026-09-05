@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/icon_utils.dart';
 import '../../core/widgets/flip_clock.dart';
 import '../../data/models/work_entry.dart';
 import '../../data/models/timer_tag.dart';
@@ -817,41 +818,31 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
     ));
   }
 
+  static const _iconPickerOrder = [
+    'work', 'school', 'menu_book', 'code', 'brush',
+    'music_note', 'self_improvement', 'fitness_center', 'favorite', 'timer',
+    'flight', 'directions_car', 'local_cafe', 'restaurant', 'shopping_cart',
+    'sports_esports', 'savings', 'home', 'groups', 'label',
+  ];
+
   void _showAddTagDialog() {
     final nameCtrl = TextEditingController();
     final rateCtrl = TextEditingController();
-    final isWork = false.obs;
+    final fixedCtrl = TextEditingController();
+    final incomeType = TimerTag.incomeNone.obs;
+    final selectedIcon = 'timer'.obs;
 
     Get.dialog(AlertDialog(
       title: const Text('添加计时标签'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: nameCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: '标签名称',
-            ),
-          ),
-          const SizedBox(height: 12),
-          Obx(() => SwitchListTile(
-                title: const Text('工作标签（计算收入）'),
-                value: isWork.value,
-                contentPadding: EdgeInsets.zero,
-                onChanged: (v) => isWork.value = v,
-              )),
-          Obx(() {
-            if (!isWork.value) return const SizedBox.shrink();
-            return TextField(
-              controller: rateCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: '时薪 (¥/小时)',
-              ),
-            );
-          }),
-        ],
+      content: SizedBox(
+        width: double.maxFinite,
+        child: _tagFormContent(
+          nameCtrl: nameCtrl,
+          rateCtrl: rateCtrl,
+          fixedCtrl: fixedCtrl,
+          incomeType: incomeType,
+          selectedIcon: selectedIcon,
+        ),
       ),
       actions: [
         TextButton(onPressed: () => Get.back(), child: const Text('取消')),
@@ -862,9 +853,23 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
               Get.snackbar('提示', '请输入标签名称');
               return;
             }
-            _ctrl.addTag(name,
-                isWork: isWork.value,
-                hourlyRate: double.tryParse(rateCtrl.text) ?? 0);
+            final rate = double.tryParse(rateCtrl.text) ?? 0;
+            final fixed = double.tryParse(fixedCtrl.text) ?? 0;
+            if (incomeType.value == TimerTag.incomeHourly && rate <= 0) {
+              Get.snackbar('提示', '请填写有效的时薪');
+              return;
+            }
+            if (incomeType.value == TimerTag.incomeFixed && fixed <= 0) {
+              Get.snackbar('提示', '请填写有效的固定薪资');
+              return;
+            }
+            _ctrl.addTag(
+              name,
+              icon: selectedIcon.value,
+              incomeType: incomeType.value,
+              hourlyRate: rate,
+              fixedSalary: fixed,
+            );
             Get.back();
           },
           child: const Text('添加'),
@@ -875,38 +880,24 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
 
   void _showEditTagDialog(TimerTag tag) {
     final nameCtrl = TextEditingController(text: tag.name);
-    final rateCtrl = TextEditingController(text: tag.hourlyRate.toString());
-    final isWork = tag.isWork.obs;
+    final rateCtrl = TextEditingController(
+        text: tag.hourlyRate > 0 ? tag.hourlyRate.toString() : '');
+    final fixedCtrl = TextEditingController(
+        text: tag.fixedSalary > 0 ? tag.fixedSalary.toString() : '');
+    final incomeType = tag.incomeType.obs;
+    final selectedIcon = tag.icon.obs;
 
     Get.dialog(AlertDialog(
-      title: const Text('编辑 / 删除标签'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: nameCtrl,
-            decoration: const InputDecoration(
-              labelText: '标签名称',
-            ),
-          ),
-          const SizedBox(height: 12),
-          Obx(() => SwitchListTile(
-                title: const Text('工作标签（计算收入）'),
-                value: isWork.value,
-                contentPadding: EdgeInsets.zero,
-                onChanged: (v) => isWork.value = v,
-              )),
-          Obx(() {
-            if (!isWork.value) return const SizedBox.shrink();
-            return TextField(
-              controller: rateCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: '时薪 (¥/小时)',
-              ),
-            );
-          }),
-        ],
+      title: const Text('编辑标签'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: _tagFormContent(
+          nameCtrl: nameCtrl,
+          rateCtrl: rateCtrl,
+          fixedCtrl: fixedCtrl,
+          incomeType: incomeType,
+          selectedIcon: selectedIcon,
+        ),
       ),
       actions: [
         TextButton(
@@ -925,9 +916,24 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
               Get.snackbar('提示', '标签名不能为空');
               return;
             }
+            final rate = double.tryParse(rateCtrl.text) ?? 0;
+            final fixed = double.tryParse(fixedCtrl.text) ?? 0;
+            if (incomeType.value == TimerTag.incomeHourly && rate <= 0) {
+              Get.snackbar('提示', '请填写有效的时薪');
+              return;
+            }
+            if (incomeType.value == TimerTag.incomeFixed && fixed <= 0) {
+              Get.snackbar('提示', '请填写有效的固定薪资');
+              return;
+            }
             tag.name = name;
-            tag.isWork = isWork.value;
-            tag.hourlyRate = double.tryParse(rateCtrl.text) ?? 0;
+            tag.icon = selectedIcon.value;
+            tag.incomeType = incomeType.value;
+            tag.isWork = incomeType.value != TimerTag.incomeNone;
+            tag.hourlyRate =
+                incomeType.value == TimerTag.incomeHourly ? rate : 0;
+            tag.fixedSalary =
+                incomeType.value == TimerTag.incomeFixed ? fixed : 0;
             StorageService().updateTimerTag(tag);
             _ctrl.update();
             Get.back();
@@ -936,6 +942,144 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
         ),
       ],
     ));
+  }
+
+  /// 标签表单：名称 + 标签属性单选 + 图标选择
+  Widget _tagFormContent({
+    required TextEditingController nameCtrl,
+    required TextEditingController rateCtrl,
+    required TextEditingController fixedCtrl,
+    required RxString incomeType,
+    required RxString selectedIcon,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: nameCtrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '标签名称',
+            ),
+          ),
+          const SizedBox(height: 12),
+          _labeledDivider('标签属性', cs),
+          Obx(() => Column(
+                children: [
+                  _incomeTypeOption(incomeType, TimerTag.incomeNone, '普通标签',
+                      '不计收入，仅用于计时统计'),
+                  _incomeTypeOption(incomeType, TimerTag.incomeHourly,
+                      '工作标签（时薪）', '按时长 × 时薪自动计算收入'),
+                  _incomeTypeOption(incomeType, TimerTag.incomeManual,
+                      '工作标签（自统计）', '计时结束后手动输入本次所得'),
+                  _incomeTypeOption(incomeType, TimerTag.incomeFixed,
+                      '工作标签（固定薪资）', '计时结束后自动记录预设固定薪资'),
+                  if (incomeType.value == TimerTag.incomeHourly) ...[
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: rateCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: '时薪 (¥/小时)',
+                      ),
+                    ),
+                  ],
+                  if (incomeType.value == TimerTag.incomeFixed) ...[
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: fixedCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: '每次固定薪资 (¥)',
+                      ),
+                    ),
+                  ],
+                ],
+              )),
+          const SizedBox(height: 12),
+          _labeledDivider('标签图标', cs),
+          const SizedBox(height: 4),
+          Obx(() => GridView.count(
+                crossAxisCount: 5,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: 1,
+                children: _iconPickerOrder.map((key) {
+                  final selected = selectedIcon.value == key;
+                  return GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      selectedIcon.value = key;
+                    },
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? cs.primary
+                              : cs.surfaceContainerHighest
+                                  .withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: selected ? cs.primary : Colors.transparent,
+                            width: 2,
+                          ),
+                        ),
+                        child: Icon(
+                          IconUtils.tag(key),
+                          size: 20,
+                          color:
+                              selected ? Colors.white : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              )),
+        ],
+      ),
+    );
+  }
+
+  /// 中间带文字的分割线
+  Widget _labeledDivider(String text, ColorScheme cs) {
+    return Row(
+      children: [
+        const Expanded(child: Divider()),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(text,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    );
+  }
+
+  Widget _incomeTypeOption(
+      RxString current, String value, String title, String subtitle) {
+    final cs = Theme.of(context).colorScheme;
+    return RadioListTile<String>(
+      value: value,
+      groupValue: current.value,
+      onChanged: (v) => current.value = v ?? TimerTag.incomeNone,
+      title: Text(title, style: const TextStyle(fontSize: 14)),
+      subtitle: Text(subtitle,
+          style: TextStyle(
+              fontSize: 11.5,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      controlAffinity: ListTileControlAffinity.trailing,
+    );
   }
 
   // ---------------- 工具 ----------------
@@ -948,22 +1092,5 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
     }
   }
 
-  IconData _iconFor(String name) {
-    switch (name) {
-      case 'work':
-        return Icons.work_outline_rounded;
-      case 'school':
-        return Icons.school_outlined;
-      case 'self_improvement':
-        return Icons.self_improvement;
-      case 'fitness_center':
-        return Icons.fitness_center_outlined;
-      case 'menu_book':
-        return Icons.menu_book_outlined;
-      case 'timer':
-        return Icons.timer_outlined;
-      default:
-        return Icons.label_outline_rounded;
-    }
-  }
+  IconData _iconFor(String name) => IconUtils.tag(name);
 }

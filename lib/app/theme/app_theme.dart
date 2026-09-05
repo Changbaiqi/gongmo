@@ -6,9 +6,8 @@ enum AppThemePreset {
   mono('黑白', [Color(0xFF212121), Color(0xFF9E9E9E)]),
   tomato('番茄红', [Color(0xFFE53935), Color(0xFFFF8A65)]),
   ocean('海洋蓝', [Color(0xFF1565C0), Color(0xFF42A5F5)]),
-  teal('青碧', [Color(0xFF00897B), Color(0xFF4DB6AC)]),
-  sunset('落日橙', [Color(0xFFEF6C00), Color(0xFFFFB74D)]),
-  sakura('樱花粉', [Color(0xFFD81B60), Color(0xFFF48FB1)]),
+  starry('星夜', [Color(0xFF3B4A8F), Color(0xFF7C89CF), Color(0xFFF0B954)]),
+  morandi('莫兰迪', [Color(0xFF8FA397), Color(0xFFC9B7A6), Color(0xFFA79BB0)]),
   grape('葡萄紫', [Color(0xFF7B1FA2), Color(0xFFBA68C8)]);
 
   final String label;
@@ -199,20 +198,19 @@ class AppTheme {
           seedColor: const Color(0xFF1565C0),
           brightness: brightness,
         );
-      case AppThemePreset.teal:
-        return ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00897B),
-          brightness: brightness,
+      case AppThemePreset.starry:
+        return _triColorScheme(
+          const Color(0xFF3B4A8F),
+          const Color(0xFF7C89CF),
+          const Color(0xFFD99A2B),
+          brightness,
         );
-      case AppThemePreset.sunset:
-        return ColorScheme.fromSeed(
-          seedColor: const Color(0xFFEF6C00),
-          brightness: brightness,
-        );
-      case AppThemePreset.sakura:
-        return ColorScheme.fromSeed(
-          seedColor: const Color(0xFFD81B60),
-          brightness: brightness,
+      case AppThemePreset.morandi:
+        return _triColorScheme(
+          const Color(0xFF8FA397),
+          const Color(0xFFC9B7A6),
+          const Color(0xFFA79BB0),
+          brightness,
         );
       case AppThemePreset.grape:
         return ColorScheme.fromSeed(
@@ -220,6 +218,32 @@ class AppTheme {
           brightness: brightness,
         );
     }
+  }
+
+  /// 三色主题：主色/次色/第三色分别作为 primary/secondary/tertiary 的种子，
+  /// 三种颜色都会真实影响界面的不同部分
+  static ColorScheme _triColorScheme(
+    Color primarySeed,
+    Color secondarySeed,
+    Color tertiarySeed,
+    Brightness brightness,
+  ) {
+    final base =
+        ColorScheme.fromSeed(seedColor: primarySeed, brightness: brightness);
+    final sec =
+        ColorScheme.fromSeed(seedColor: secondarySeed, brightness: brightness);
+    final ter =
+        ColorScheme.fromSeed(seedColor: tertiarySeed, brightness: brightness);
+    return base.copyWith(
+      secondary: sec.secondary,
+      onSecondary: sec.onSecondary,
+      secondaryContainer: sec.secondaryContainer,
+      onSecondaryContainer: sec.onSecondaryContainer,
+      tertiary: ter.tertiary,
+      onTertiary: ter.onTertiary,
+      tertiaryContainer: ter.tertiaryContainer,
+      onTertiaryContainer: ter.onTertiaryContainer,
+    );
   }
 
   static Color _cardColorFor(AppThemePreset preset, bool isDark) {
@@ -233,12 +257,10 @@ class AppTheme {
         return const Color(0xFF1E1514);
       case AppThemePreset.ocean:
         return const Color(0xFF14181D);
-      case AppThemePreset.teal:
-        return const Color(0xFF131918);
-      case AppThemePreset.sunset:
-        return const Color(0xFF1C1611);
-      case AppThemePreset.sakura:
-        return const Color(0xFF1C1418);
+      case AppThemePreset.starry:
+        return const Color(0xFF161826);
+      case AppThemePreset.morandi:
+        return const Color(0xFF1A1917);
       case AppThemePreset.grape:
         return const Color(0xFF171319);
     }
@@ -260,12 +282,10 @@ class AppTheme {
         return isDark ? const Color(0xFF150F0E) : const Color(0xFFFAF5F4);
       case AppThemePreset.ocean:
         return isDark ? const Color(0xFF0D1114) : const Color(0xFFF4F6F8);
-      case AppThemePreset.teal:
-        return isDark ? const Color(0xFF0D1211) : const Color(0xFFF3F7F6);
-      case AppThemePreset.sunset:
-        return isDark ? const Color(0xFF13100C) : const Color(0xFFFAF6F0);
-      case AppThemePreset.sakura:
-        return isDark ? const Color(0xFF130E11) : const Color(0xFFFBF4F6);
+      case AppThemePreset.starry:
+        return isDark ? const Color(0xFF0F1020) : const Color(0xFFF5F5F9);
+      case AppThemePreset.morandi:
+        return isDark ? const Color(0xFF121110) : const Color(0xFFF6F5F2);
       case AppThemePreset.grape:
         return isDark ? const Color(0xFF100D12) : const Color(0xFFF8F5F9);
     }

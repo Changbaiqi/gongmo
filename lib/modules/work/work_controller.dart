@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/utils/date_utils.dart';
@@ -330,12 +331,21 @@ class WorkController extends GetxController {
     _refreshDashboard();
   }
 
-  void addTag(String name, {bool isWork = false, double hourlyRate = 0}) {
+  void addTag(
+    String name, {
+    String icon = 'timer',
+    String incomeType = TimerTag.incomeNone,
+    double hourlyRate = 0,
+    double fixedSalary = 0,
+  }) {
     final tag = TimerTag(
       id: _uuid.v4(),
       name: name,
-      isWork: isWork,
-      hourlyRate: hourlyRate,
+      icon: icon,
+      isWork: incomeType != TimerTag.incomeNone,
+      incomeType: incomeType,
+      hourlyRate: incomeType == TimerTag.incomeHourly ? hourlyRate : 0,
+      fixedSalary: incomeType == TimerTag.incomeFixed ? fixedSalary : 0,
       sortOrder: tags.length + 1,
     );
     _storage.addTimerTag(tag);
@@ -371,6 +381,12 @@ class WorkController extends GetxController {
   void _refreshDashboard() {
     try {
       Get.find<DashboardController>(tag: 'dashboard').refreshData();
+    } catch (_) {}
+  }
+
+  void _refreshFinance() {
+    try {
+      Get.find<FinanceController>().loadEntries();
     } catch (_) {}
   }
 
