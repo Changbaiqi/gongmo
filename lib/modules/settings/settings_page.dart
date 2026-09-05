@@ -469,13 +469,35 @@ class SettingsPage extends StatelessWidget {
                   final token = tokenCtrl.text.trim();
                   if (url.isNotEmpty &&
                       GithubSyncService.normalizeRepo(url) == null) {
-                    Get.snackbar('格式错误', '仓库地址不正确，示例：https://github.com/user/repo');
+                    Get.snackbar('格式错误',
+                        '仓库地址不正确，示例：https://github.com/user/repo');
+                    return;
+                  }
+                  if (token.isNotEmpty &&
+                      !GithubSyncService.isValidTokenFormat(token)) {
+                    Get.snackbar(
+                        'Token 格式可疑',
+                        'Token 通常以 ghp_ 或 github_pat_ 开头，'
+                        '请检查是否复制完整或混入了空格');
                     return;
                   }
                   await ctrl.setGithubRepo(url);
                   await ctrl.setGithubToken(token);
                   Get.back();
-                  Get.snackbar('已保存', 'GitHub 配置已更新');
+                  if (url.isEmpty || token.isEmpty) {
+                    Get.snackbar('已保存', 'GitHub 配置已更新');
+                    return;
+                  }
+                  Get.snackbar('正在检测', '正在验证仓库与 Token...',
+                      duration: const Duration(seconds: 2));
+                  try {
+                    await GithubSyncService.instance.testConnection();
+                    Get.snackbar('连接成功', '仓库与 Token 验证通过，可以同步了');
+                  } on GithubSyncException catch (e) {
+                    Get.snackbar('连接失败', e.message);
+                  } catch (_) {
+                    Get.snackbar('连接失败', '网络异常，请检查网络');
+                  }
                 },
                 child: const Text('保存'),
               ),

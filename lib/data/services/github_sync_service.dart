@@ -336,16 +336,4 @@ class GithubSyncService {
             'GitHub 请求失败（HTTP $statusCode）${detail != null ? '：$detail' : ''}');
     }
   }
-    switch (statusCode) {
-      case 401:
-      case 403:
-        return GithubSyncException('Token 无效或权限不足（需要 Contents 读写权限）');
-      case 404:
-        return GithubSyncException('仓库不存在或无权访问，请检查仓库地址');
-      case 301:
-        return GithubSyncException('仓库已迁移，请更新仓库地址');
-      default:
-        return GithubSyncException('GitHub 请求失败（HTTP $statusCode）');
-    }
-  }
 }
