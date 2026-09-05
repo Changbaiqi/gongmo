@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import '../../data/repositories/finance_repository.dart';
@@ -15,6 +16,9 @@ class FinanceController extends GetxController {
   final monthIncome = 0.0.obs;
   final monthExpense = 0.0.obs;
   final isLoading = false.obs;
+
+  /// 分类列表版本号：新增分类后自增，驱动分类网格刷新
+  final categoriesRevision = 0.obs;
 
   List<Category> get categories => _storage.categories;
 
@@ -75,6 +79,27 @@ class FinanceController extends GetxController {
     } catch (_) {
       return '未分类';
     }
+  }
+
+  /// 新增自定义分类，返回新分类 id
+  String addCategory({
+    required String name,
+    required String icon,
+    required Color color,
+    required FinanceType type,
+  }) {
+    final cat = Category(
+      id: 'cus_${_uuid.v4().substring(0, 8)}',
+      name: name,
+      type: type,
+      icon: icon,
+      color:
+          '#${(color.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}'.toUpperCase(),
+      sortOrder: _storage.categories.where((c) => c.type == type).length + 1,
+    );
+    _storage.addCategory(cat);
+    categoriesRevision.value++;
+    return cat.id;
   }
 
   String getCategoryIcon(String categoryId) {

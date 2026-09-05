@@ -3,32 +3,63 @@ import 'package:flutter/material.dart';
 
 /// 翻牌时钟：显示 HH:mm:ss，数字变化时播放翻牌动效
 class FlipClock extends StatelessWidget {
-  final DateTime time;
+  final String hours;
+  final String minutes;
+  final String seconds;
   final double digitWidth;
   final double digitHeight;
   final double fontSize;
+  final Color? cardColor;
+  final Color? textColor;
 
-  const FlipClock({
+  /// 显示某个时刻的翻牌时钟
+  FlipClock({
     super.key,
-    required this.time,
+    required DateTime time,
     this.digitWidth = 40,
     this.digitHeight = 60,
     this.fontSize = 34,
+    this.cardColor,
+    this.textColor,
+  })  : hours = time.hour.toString().padLeft(2, '0'),
+        minutes = time.minute.toString().padLeft(2, '0'),
+        seconds = time.second.toString().padLeft(2, '0');
+
+  /// 正向计时显示（支持超过 24 小时）
+  FlipClock.elapsed({
+    super.key,
+    required Duration elapsed,
+    this.digitWidth = 40,
+    this.digitHeight = 60,
+    this.fontSize = 34,
+    this.cardColor,
+    this.textColor,
+  })  : hours = elapsed.inHours.toString().padLeft(2, '0'),
+        minutes = (elapsed.inMinutes % 60).toString().padLeft(2, '0'),
+        seconds = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+
+  const FlipClock.fromParts({
+    super.key,
+    required this.hours,
+    required this.minutes,
+    required this.seconds,
+    this.digitWidth = 40,
+    this.digitHeight = 60,
+    this.fontSize = 34,
+    this.cardColor,
+    this.textColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    String two(int v) => v.toString().padLeft(2, '0');
-    final h = two(time.hour);
-    final m = two(time.minute);
-    final s = two(time.second);
-
     Widget digit(String d) => FlipDigit(
           digit: d,
           width: digitWidth,
           height: digitHeight,
           fontSize: fontSize,
+          cardColor: cardColor,
+          textColor: textColor,
         );
 
     Widget colon() => SizedBox(
@@ -63,17 +94,17 @@ class FlipClock extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        digit(h[0]),
+        digit(hours[0]),
         const SizedBox(width: 3),
-        digit(h[1]),
+        digit(hours[1]),
         colon(),
-        digit(m[0]),
+        digit(minutes[0]),
         const SizedBox(width: 3),
-        digit(m[1]),
+        digit(minutes[1]),
         colon(),
-        digit(s[0]),
+        digit(seconds[0]),
         const SizedBox(width: 3),
-        digit(s[1]),
+        digit(seconds[1]),
       ],
     );
   }

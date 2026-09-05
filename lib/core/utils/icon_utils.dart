@@ -28,6 +28,13 @@ class IconUtils {
   static IconData tag(String name) =>
       tagIcons[name] ?? Icons.label_outline_rounded;
 
+  /// 分类可选图标（记账分类）
+  static const List<String> categoryIconKeys = [
+    'restaurant', 'directions_car', 'print', 'computer', 'work', 'chat',
+    'attach_money', 'more_horiz', 'school', 'favorite', 'sports_esports',
+    'savings', 'home', 'flight', 'local_cafe', 'music_note',
+  ];
+
   static IconData category(String name) {
     switch (name) {
       case 'work':
@@ -44,6 +51,22 @@ class IconUtils {
         return Icons.print_outlined;
       case 'computer':
         return Icons.computer_outlined;
+      case 'school':
+        return Icons.school_outlined;
+      case 'favorite':
+        return Icons.favorite_outline_rounded;
+      case 'sports_esports':
+        return Icons.sports_esports_outlined;
+      case 'savings':
+        return Icons.savings_outlined;
+      case 'home':
+        return Icons.home_outlined;
+      case 'flight':
+        return Icons.flight_takeoff_rounded;
+      case 'local_cafe':
+        return Icons.local_cafe_outlined;
+      case 'music_note':
+        return Icons.music_note_outlined;
       case 'more_horiz':
         return Icons.more_horiz_rounded;
       default:

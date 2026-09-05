@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -690,10 +691,6 @@ class _HomePageState extends State<HomePage> {
     final isExpense = (entry.type == FinanceType.expense).obs;
     final selectedCatId = entry.categoryId.obs;
 
-    final cats = fc.categories;
-    final expCats = cats.where((c) => c.type == FinanceType.expense).toList();
-    final incCats = cats.where((c) => c.type == FinanceType.income).toList();
-
     Get.bottomSheet(
       Container(
         padding:
@@ -751,7 +748,7 @@ class _HomePageState extends State<HomePage> {
                             onTap: () {
                               isExpense.value = true;
                               _fixCategorySelection(
-                                  isExpense, expCats, incCats, selectedCatId);
+                                  fc, isExpense, selectedCatId);
                             },
                           ),
                         ),
@@ -765,7 +762,7 @@ class _HomePageState extends State<HomePage> {
                             onTap: () {
                               isExpense.value = false;
                               _fixCategorySelection(
-                                  isExpense, expCats, incCats, selectedCatId);
+                                  fc, isExpense, selectedCatId);
                             },
                           ),
                         ),
@@ -773,10 +770,9 @@ class _HomePageState extends State<HomePage> {
                     )),
                 const SizedBox(height: 14),
                 _categoryGrid(
+                  fc: fc,
                   cs: cs,
                   isExpense: isExpense,
-                  expCats: expCats,
-                  incCats: incCats,
                   selectedCatId: selectedCatId,
                 ),
                 const SizedBox(height: 12),
@@ -822,25 +818,28 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// 切换收支类型后，若当前选中分类不属于该类型则回落到第一个分类
-  void _fixCategorySelection(RxBool isExpense, List<Category> expCats,
-      List<Category> incCats, RxString selectedCatId) {
-    final active = isExpense.value ? expCats : incCats;
+  void _fixCategorySelection(
+      FinanceController fc, RxBool isExpense, RxString selectedCatId) {
+    final type = isExpense.value ? FinanceType.expense : FinanceType.income;
+    final active = fc.categories.where((c) => c.type == type).toList();
     if (active.isEmpty) return;
     if (!active.any((c) => c.id == selectedCatId.value)) {
       selectedCatId.value = active.first.id;
     }
   }
 
-  /// 分类图标网格（记一笔 / 修改账目 共用）
+  /// 分类图标网格（记一笔 / 修改账目 共用），尾部带“新增分类”入口
   Widget _categoryGrid({
+    required FinanceController fc,
     required ColorScheme cs,
     required RxBool isExpense,
-    required List<Category> expCats,
-    required List<Category> incCats,
     required RxString selectedCatId,
   }) {
     return Obx(() {
-      final activeCats = isExpense.value ? expCats : incCats;
+      fc.categoriesRevision.value; // 新增分类后刷新
+      final type = isExpense.value ? FinanceType.expense : FinanceType.income;
+      final activeCats =
+          fc.categories.where((c) => c.type == type).toList();
       if (activeCats.isEmpty) return const SizedBox.shrink();
       if (selectedCatId.value.isEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -852,50 +851,277 @@ class _HomePageState extends State<HomePage> {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         childAspectRatio: 0.95,
-        children: activeCats.map((cat) {
-          final selected = selectedCatId.value == cat.id;
-          final color = IconUtils.hex(cat.color, cs.primary);
-          return GestureDetector(
-            onTap: () => selectedCatId.value = cat.id,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: selected ? color : color.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: selected ? color : Colors.transparent,
-                      width: 2,
+        children: [
+          ...activeCats.map((cat) {
+            final selected = selectedCatId.value == cat.id;
+            final color = IconUtils.hex(cat.color, cs.primary);
+            return GestureDetector(
+              onTap: () => selectedCatId.value = cat.id,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: selected ? color : color.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: selected ? color : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Icon(
+                      IconUtils.category(cat.icon),
+                      size: 20,
+                      color: selected ? Colors.white : color,
                     ),
                   ),
-                  child: Icon(
-                    IconUtils.category(cat.icon),
-                    size: 20,
-                    color: selected ? Colors.white : color,
+                  const SizedBox(height: 5),
+                  Text(
+                    cat.name,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: selected ? color : cs.onSurfaceVariant,
+                      fontWeight:
+                          selected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            );
+          }),
+          _addCategoryTile(fc, cs, isExpense.value, selectedCatId),
+        ],
+      );
+    });
+  }
+
+  /// “新增分类”网格入口
+  Widget _addCategoryTile(FinanceController fc, ColorScheme cs, bool isExpense,
+      RxString selectedCatId) {
+    return GestureDetector(
+      onTap: () => _showAddCategoryDialog(
+          fc: fc, isExpense: isExpense, selectedCatId: selectedCatId),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: cs.outlineVariant, width: 1.4),
+            ),
+            child:
+                Icon(Icons.add_rounded, size: 20, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 5),
+          Text('新增分类',
+              style:
+                  TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  static const _categoryIconKeys = [
+    'restaurant', 'directions_car', 'print', 'computer', 'work', 'chat',
+    'attach_money', 'more_horiz', 'school', 'favorite', 'sports_esports',
+    'savings', 'home', 'flight', 'local_cafe', 'music_note',
+  ];
+
+  static const _categoryColorPalette = [
+    Color(0xFFE53935), Color(0xFFFB8C00), Color(0xFFFDD835), Color(0xFF43A047),
+    Color(0xFF00ACC1), Color(0xFF1E88E5), Color(0xFF8E24AA), Color(0xFFEC407A),
+    Color(0xFF6D4C41), Color(0xFF757575),
+  ];
+
+  /// 新增分类：名称 + 图标 + 背景颜色（未选择颜色时随机）
+  void _showAddCategoryDialog({
+    required FinanceController fc,
+    required bool isExpense,
+    required RxString selectedCatId,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final nameCtrl = TextEditingController();
+    final selectedIcon = 'restaurant'.obs;
+    final selectedColor = Rxn<Color>(); // null = 随机
+
+    Get.dialog(
+      AlertDialog(
+        title: Text(isExpense ? '新增支出分类' : '新增收入分类'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: '分类名称',
                   ),
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  cat.name,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: selected ? color : cs.onSurfaceVariant,
-                    fontWeight:
-                        selected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 12),
+                _labeledDivider('分类图标', cs),
+                Obx(() => GridView.count(
+                      crossAxisCount: 4,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      childAspectRatio: 1,
+                      children: _categoryIconKeys.map((key) {
+                        final selected = selectedIcon.value == key;
+                        return GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            selectedIcon.value = key;
+                          },
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? cs.primary
+                                    : cs.surfaceContainerHighest
+                                        .withValues(alpha: 0.5),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: selected
+                                      ? cs.primary
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                IconUtils.category(key),
+                                size: 20,
+                                color: selected
+                                    ? Colors.white
+                                    : cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    )),
+                const SizedBox(height: 10),
+                _labeledDivider('背景颜色', cs),
+                Obx(() => Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        _randomColorOption(cs, selectedColor),
+                        for (final c in _categoryColorPalette)
+                          _categoryColorOption(cs, selectedColor, c),
+                      ],
+                    )),
+                const SizedBox(height: 4),
+                Center(
+                  child: Text('未选择颜色时将随机分配',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
                 ),
               ],
             ),
-          );
-        }).toList(),
-      );
-    });
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) {
+                Get.snackbar('提示', '请输入分类名称');
+                return;
+              }
+              final color = selectedColor.value ?? _randomPleasantColor();
+              final id = fc.addCategory(
+                name: name,
+                icon: selectedIcon.value,
+                color: color,
+                type:
+                    isExpense ? FinanceType.expense : FinanceType.income,
+              );
+              selectedCatId.value = id;
+              Get.back();
+              Get.snackbar('已添加', '分类「$name」已创建');
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _labeledDivider(String text, ColorScheme cs) {
+    return Row(
+      children: [
+        const Expanded(child: Divider()),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(text,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    );
+  }
+
+  Widget _randomColorOption(ColorScheme cs, Rxn<Color> selected) {
+    final isRandom = selected.value == null;
+    return GestureDetector(
+      onTap: () => selected.value = null,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: isRandom ? cs.primary : cs.outlineVariant, width: 2),
+        ),
+        child:
+            Icon(Icons.shuffle_rounded, size: 16, color: cs.onSurfaceVariant),
+      ),
+    );
+  }
+
+  Widget _categoryColorOption(
+      ColorScheme cs, Rxn<Color> selected, Color color) {
+    final isSelected = selected.value == color;
+    return GestureDetector(
+      onTap: () => selected.value = color,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: isSelected ? cs.primary : Colors.transparent, width: 2.5),
+        ),
+      ),
+    );
+  }
+
+  Color _randomPleasantColor() {
+    final rnd = Random();
+    return HSLColor.fromAHSL(1, rnd.nextDouble() * 360, 0.55, 0.55).toColor();
   }
 
   void _showQuickFinance() {
@@ -905,10 +1131,6 @@ class _HomePageState extends State<HomePage> {
     final noteCtrl = TextEditingController();
     final isExpense = true.obs;
     final selectedCatId = ''.obs;
-
-    final cats = fc.categories;
-    final expCats = cats.where((c) => c.type == FinanceType.expense).toList();
-    final incCats = cats.where((c) => c.type == FinanceType.income).toList();
 
     Get.bottomSheet(
       Container(
@@ -966,9 +1188,8 @@ class _HomePageState extends State<HomePage> {
                             color: Colors.red.shade600,
                             onTap: () {
                               isExpense.value = true;
-                              if (expCats.isNotEmpty) {
-                                selectedCatId.value = expCats.first.id;
-                              }
+                              _fixCategorySelection(
+                                  fc, isExpense, selectedCatId);
                             },
                           ),
                         ),
@@ -981,9 +1202,8 @@ class _HomePageState extends State<HomePage> {
                             color: Colors.green.shade600,
                             onTap: () {
                               isExpense.value = false;
-                              if (incCats.isNotEmpty) {
-                                selectedCatId.value = incCats.first.id;
-                              }
+                              _fixCategorySelection(
+                                  fc, isExpense, selectedCatId);
                             },
                           ),
                         ),
@@ -991,10 +1211,9 @@ class _HomePageState extends State<HomePage> {
                     )),
                 const SizedBox(height: 14),
                 _categoryGrid(
+                  fc: fc,
                   cs: cs,
                   isExpense: isExpense,
-                  expCats: expCats,
-                  incCats: incCats,
                   selectedCatId: selectedCatId,
                 ),
                 const SizedBox(height: 12),

@@ -75,42 +75,6 @@ class SettingsPage extends StatelessWidget {
           _buildSectionTitle('关于'),
           Card(
             child: Column(
-              children: ctrl.categories
-                  .map((cat) {
-                    final color = IconUtils.hex(cat.color);
-                    return ListTile(
-                      leading: Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.13),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          IconUtils.category(cat.icon),
-                          size: 17,
-                          color: color,
-                        ),
-                      ),
-                      title: Text(cat.name),
-                      trailing: Text(
-                        cat.type == FinanceType.income ? '收入' : '支出',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cat.type == FinanceType.income
-                              ? Colors.green.shade600
-                              : Colors.red.shade600,
-                        ),
-                      ),
-                    );
-                  })
-                  .toList(),
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildSectionTitle('关于'),
-          Card(
-            child: Column(
               children: [
                 const ListTile(
                   leading: Icon(Icons.info_outline),
@@ -142,6 +106,76 @@ class SettingsPage extends StatelessWidget {
           fontWeight: FontWeight.bold,
           fontSize: 13,
         ),
+      ),
+    );
+  }
+
+  /// 清空云端备份：需输入指定文字二次确认
+  void _confirmClearCloudBackups(SettingsController ctrl) {
+    final confirmCtrl = TextEditingController();
+    final canConfirm = false.obs;
+    const keyword = '自愿清空仓库';
+
+    Get.dialog(
+      AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red.shade600),
+            const SizedBox(width: 8),
+            const Text('清空所有云端备份'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Text(
+                '将永久删除仓库中的全部分备份文件（含所有年份的计时与账目备份），删除后无法恢复！',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.5,
+                    color: Colors.red.shade700),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('如确认执行，请输入「自愿清空仓库」：',
+                style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: confirmCtrl,
+              autofocus: true,
+              onChanged: (v) => canConfirm.value = v.trim() == keyword,
+              decoration: const InputDecoration(
+                hintText: '自愿清空仓库',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('取消'),
+          ),
+          Obx(() => TextButton(
+                onPressed: canConfirm.value
+                    ? () {
+                        Get.back();
+                        ctrl.clearCloudBackups();
+                      }
+                    : null,
+                child: Text('确认清空',
+                    style: TextStyle(
+                        color:
+                            canConfirm.value ? Colors.red.shade600 : null)),
+              )),
+        ],
       ),
     );
   }
