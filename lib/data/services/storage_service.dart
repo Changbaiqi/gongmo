@@ -40,15 +40,17 @@ class StorageService {
     _initialized = true;
   }
 
+  static const _workPrefix = 'work_entries';
+  static const _financePrefix = 'finance_entries';
+
   Future<void> _loadAll() async {
-    _workEntries = await _loadList<WorkEntry>(
-      'work_entries.json',
-      (json) => WorkEntry.fromJson(json),
-    );
-    _financeEntries = await _loadList<FinanceEntry>(
-      'finance_entries.json',
-      (json) => FinanceEntry.fromJson(json),
-    );
+    // 按年分片加载：work_entries_2025.json / work_entries_2026.json ...
+    _workEntries =
+        await _loadYearSplit<WorkEntry>(_workPrefix, WorkEntry.fromJson);
+    _financeEntries = await _loadYearSplit<FinanceEntry>(
+        _financePrefix, FinanceEntry.fromJson);
+    // 旧版本单文件自动迁移到分片
+    await _migrateLegacy();
     _categories = await _loadList<Category>(
       'categories.json',
       (json) => Category.fromJson(json),
@@ -78,6 +80,67 @@ class StorageService {
       await _saveList('timer_tags.json', _timerTags);
     }
     await _loadConfig();
+  }
+
+  /// 旧版本单文件迁移到按年分片后删除
+  Future<void> _migrateLegacy() async {
+    final legacyFiles = {
+      '$_workPrefix.json': false, // false → 计时记录
+      '$_financePrefix.json': true, // true → 账目记录
+    };
+    for (final entry in legacyFiles.entries) {
+      final file = File('${_dataDir.path}/${entry.key}');
+      if (!await file.exists()) continue;
+      try {
+        final content = await file.readAsString();
+        final list = json.decode(content) as List<dynamic>;
+        final maps = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        if (entry.value) {
+          final ids = _financeEntries.map((e) => e.id).toSet();
+          _financeEntries.addAll(maps
+              .map((e) => FinanceEntry.fromJson(e))
+              .where((e) => !ids.contains(e.id)));
+          await saveFinanceEntries();
+        } else {
+          final ids = _workEntries.map((e) => e.id).toSet();
+          _workEntries.addAll(maps
+              .map((e) => WorkEntry.fromJson(e))
+              .where((e) => !ids.contains(e.id)));
+          await saveWorkEntries();
+        }
+        await file.delete();
+      } catch (_) {
+        // 迁移失败时保留原文件，下次启动重试
+      }
+    }
+  }
+
+  /// 按年分片加载
+  Future<List<T>> _loadYearSplit<T>(
+    String prefix,
+    T Function(Map<String, dynamic>) fromJson,
+  ) async {
+    final result = <T>[];
+    try {
+      for (final entity in _dataDir.listSync()) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (!name.startsWith('${prefix}_') || !name.endsWith('.json')) continue;
+        final yearStr = name.substring(prefix.length + 1, name.length - 5);
+        if (int.tryParse(yearStr) == null) continue;
+        try {
+          final content = await entity.readAsString();
+          final list = json.decode(content) as List<dynamic>;
+          result.addAll(list.map((e) => fromJson(e as Map<String, dynamic>)));
+        } catch (_) {
+          // 单个分片损坏时跳过，不影响其他年份数据
+        }
+      }
+    } catch (_) {}
+    return result;
   }
 
   /// 读取轻量配置项（存储在 config.json）
@@ -126,10 +189,19 @@ class StorageService {
     await file.writeAsString(jsonStr);
   }
 
-  Future<void> saveWorkEntries() =>
-      _saveList('work_entries.json', _workEntries);
-  Future<void> saveFinanceEntries() =>
-      _saveList('finance_entries.json', _financeEntries);
+  Future<void> saveWorkEntries() => _saveYearSplit<WorkEntry>(
+        _workPrefix,
+        _workEntries,
+        (e) => e.startTime.year,
+        (e) => e.toJson(),
+      );
+
+  Future<void> saveFinanceEntries() => _saveYearSplit<FinanceEntry>(
+        _financePrefix,
+        _financeEntries,
+        (e) => e.date.year,
+        (e) => e.toJson(),
+      );
   Future<void> saveCategories() => _saveList('categories.json', _categories);
   Future<void> saveAccounts() => _saveList('accounts.json', _accounts);
   Future<void> saveTimerTags() => _saveList('timer_tags.json', _timerTags);
@@ -224,6 +296,76 @@ class StorageService {
       'accounts': _accounts.map((e) => e.toJson()).toList(),
       'timerTags': _timerTags.map((e) => e.toJson()).toList(),
     };
+  }
+
+  /// 按年分片保存：每个年份一个文件（work_entries_2026.json），
+  /// 单个文件体量可控；无数据的年份分片会被清理
+  Future<void> _saveYearSplit<T>(
+    String prefix,
+    List<T> items,
+    int Function(T) yearOf,
+    Map<String, dynamic> Function(T) toJ,
+  ) async {
+    final byYear = <int, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      byYear.putIfAbsent(yearOf(item), () => []).add(toJ(item));
+    }
+    // 清理已无数据的年份分片
+    try {
+      for (final entity in _dataDir.listSync()) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (!name.startsWith('${prefix}_') || !name.endsWith('.json')) continue;
+        final yearStr = name.substring(prefix.length + 1, name.length - 5);
+        final year = int.tryParse(yearStr);
+        if (year == null || !byYear.containsKey(year)) {
+          try {
+            await entity.delete();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    for (final entry in byYear.entries) {
+      final file = File('${_dataDir.path}/${prefix}_${entry.key}.json');
+      await file.writeAsString(json.encode(entry.value));
+    }
+  }
+
+  /// 按年份导出数据（用于分片备份，避免单文件超过 GitHub 100MB 限制）
+  Map<int, Map<String, dynamic>> exportDataByYear() {
+    final years = <int>{};
+    for (final e in _workEntries) {
+      years.add(e.startTime.year);
+    }
+    for (final f in _financeEntries) {
+      years.add(f.date.year);
+    }
+    final result = <int, Map<String, dynamic>>{};
+    for (final y in years) {
+      result[y] = {
+        'workEntries': _workEntries
+            .where((e) => e.startTime.year == y)
+            .map((e) => e.toJson())
+            .toList(),
+        'financeEntries': _financeEntries
+            .where((f) => f.date.year == y)
+            .map((f) => f.toJson())
+            .toList(),
+      };
+    }
+    return result;
+  }
+
+  /// 估算本地数据总量（字节），用于体积监控
+  int estimateDataSize() {
+    var bytes = 0;
+    for (final e in _workEntries) {
+      bytes += json.encode(e.toJson()).length;
+    }
+    for (final f in _financeEntries) {
+      bytes += json.encode(f.toJson()).length;
+    }
+    return bytes;
   }
 
   /// 用备份数据整体覆盖本地数据（空列表保留本地默认值）

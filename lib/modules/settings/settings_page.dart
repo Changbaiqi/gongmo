@@ -5,8 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
-import '../../core/utils/icon_utils.dart';
-import '../../data/models/finance_entry.dart';
 import '../../data/services/github_sync_service.dart';
 import 'settings_controller.dart';
 
@@ -53,11 +51,28 @@ class SettingsPage extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Get.toNamed('/sync'),
                 ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.delete_forever_rounded,
+                      color: Colors.red.shade600),
+                  title: Text('清空所有云端备份',
+                      style: TextStyle(
+                          color: Colors.red.shade600,
+                          fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    '危险操作：将永久删除仓库中的全部分备份文件',
+                    style: TextStyle(
+                        fontSize: 11.5, color: Colors.red.shade400),
+                  ),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: Colors.red),
+                  onTap: () => _confirmClearCloudBackups(ctrl),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 24),
-          _buildSectionTitle('分类管理'),
+          _buildSectionTitle('关于'),
           Card(
             child: Column(
               children: ctrl.categories

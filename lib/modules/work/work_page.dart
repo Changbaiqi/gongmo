@@ -416,19 +416,22 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
   // ---------------- 正计时视图 ----------------
 
   Widget _buildTagRow() {
-    return SizedBox(
-      height: 44,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        children: [
-          ..._ctrl.tags.map((tag) =>
-              _buildTagChip(tag, _ctrl.currentTimerTag.value?.id == tag.id)),
-          const SizedBox(width: 4),
-          _buildAddTagButton(),
-        ],
-      ),
-    );
+    return Obx(() {
+      _ctrl.tagsRevision.value; // 标签增删/排序/编辑后刷新
+      return SizedBox(
+        height: 44,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          children: [
+            _buildAddTagButton(),
+            const SizedBox(width: 4),
+            ..._ctrl.tags.map((tag) => _buildTagChip(
+                tag, _ctrl.currentTimerTag.value?.id == tag.id)),
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildTagChip(TimerTag tag, bool isSelected) {
@@ -502,8 +505,12 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: _showAddTagDialog,
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        _showTagManagerDialog();
+      },
       child: Container(
-        margin: const EdgeInsets.only(left: 4),
+        margin: const EdgeInsets.only(right: 4),
         width: 36,
         height: 36,
         decoration: BoxDecoration(
@@ -515,6 +522,130 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
         child: Icon(Icons.add_rounded, size: 18, color: cs.onSurfaceVariant),
       ),
     );
+  }
+
+  // ---------------- 标签管理（长按 + 打开） ----------------
+
+  void _showTagManagerDialog() {
+    final cs = Theme.of(context).colorScheme;
+    Get.dialog(
+      AlertDialog(
+        title: const Text('标签管理'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Obx(() {
+            _ctrl.tagsRevision.value;
+            final tags = _ctrl.tags;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '长按拖动调整先后顺序，共 ${tags.length} 个标签',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 320,
+                  child: ReorderableListView.builder(
+                    shrinkWrap: true,
+                    buildDefaultDragHandles: false,
+                    itemCount: tags.length,
+                    onReorder: _ctrl.reorderTag,
+                    itemBuilder: (context, index) =>
+                        _buildManagerTile(context, tags[index], index),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _showAddTagDialog,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('添加标签'),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('完成'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManagerTile(BuildContext context, TimerTag tag, int index) {
+    final cs = Theme.of(context).colorScheme;
+    final color = _parseColor(tag.color);
+    final canDelete = _ctrl.tags.length > 1;
+    return ListTile(
+      key: ValueKey(tag.id),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ReorderableDragStartListener(
+            index: index,
+            child: Icon(Icons.drag_indicator_rounded,
+                size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+          ),
+          const SizedBox(width: 2),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.13),
+              shape: BoxShape.circle,
+            ),
+            child:
+                Icon(IconUtils.tag(tag.icon), size: 17, color: color),
+          ),
+        ],
+      ),
+      title: Text(tag.name,
+          style:
+              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      subtitle: Text(_incomeTypeLabel(tag),
+          style: TextStyle(
+              fontSize: 11.5,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+      trailing: IconButton(
+        icon: Icon(
+          Icons.delete_outline_rounded,
+          size: 20,
+          color: canDelete
+              ? cs.onSurfaceVariant.withValues(alpha: 0.7)
+              : cs.outlineVariant,
+        ),
+        onPressed: canDelete
+            ? () {
+                HapticFeedback.selectionClick();
+                _ctrl.removeTag(tag.id);
+              }
+            : () => Get.snackbar('提示', '至少保留一个标签'),
+      ),
+    );
+  }
+
+  String _incomeTypeLabel(TimerTag tag) {
+    switch (tag.incomeType) {
+      case TimerTag.incomeHourly:
+        return '时薪 ¥${tag.hourlyRate.toStringAsFixed(0)}/小时';
+      case TimerTag.incomeManual:
+        return '自统计收入';
+      case TimerTag.incomeFixed:
+        return '固定薪资 ¥${tag.fixedSalary.toStringAsFixed(0)}';
+      default:
+        return '普通标签';
+    }
   }
 
   Widget _buildRunningView() {
@@ -935,7 +1066,7 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
             tag.fixedSalary =
                 incomeType.value == TimerTag.incomeFixed ? fixed : 0;
             StorageService().updateTimerTag(tag);
-            _ctrl.update();
+            _ctrl.notifyTagsChanged();
             Get.back();
           },
           child: const Text('保存'),

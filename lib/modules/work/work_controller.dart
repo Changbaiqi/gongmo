@@ -25,6 +25,14 @@ class WorkController extends GetxController {
   final currentTimerEntry = Rxn<WorkEntry>();
   final elapsedSeconds = 0.obs;
 
+  /// 标签列表版本号：增删/排序/编辑后自增，驱动标签栏刷新
+  final tagsRevision = 0.obs;
+
+  void notifyTagsChanged() {
+    tagsRevision.value++;
+    update();
+  }
+
   final isClockedIn = false.obs;
   final clockInTime = Rxn<DateTime>();
   final clockEntry = Rxn<WorkEntry>();
@@ -349,7 +357,7 @@ class WorkController extends GetxController {
       sortOrder: tags.length + 1,
     );
     _storage.addTimerTag(tag);
-    update();
+    notifyTagsChanged();
   }
 
   void removeTag(String id) {
@@ -359,7 +367,22 @@ class WorkController extends GetxController {
       _selectedTag = tags.isNotEmpty ? tags.first : null;
       currentTimerTag.value = _selectedTag;
     }
-    update();
+    notifyTagsChanged();
+  }
+
+  /// 调整标签顺序（管理弹窗拖动排序）
+  void reorderTag(int oldIndex, int newIndex) {
+    final list = _storage.timerTags;
+    if (oldIndex < 0 || oldIndex >= list.length) return;
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex < 0 || newIndex > list.length - 1) return;
+    final tag = list.removeAt(oldIndex);
+    list.insert(newIndex, tag);
+    for (var i = 0; i < list.length; i++) {
+      list[i].sortOrder = i + 1;
+    }
+    _storage.saveTimerTags();
+    notifyTagsChanged();
   }
 
   String get formattedElapsed {

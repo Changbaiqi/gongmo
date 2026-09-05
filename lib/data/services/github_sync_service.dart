@@ -17,8 +17,10 @@ class GithubSyncException implements Exception {
 
 /// GitHub 备份同步服务
 ///
-/// 通过 GitHub Contents API 将本地数据以 JSON 备份的形式
-/// 保存到指定仓库（gongmo_backup.json），并支持拉取恢复。
+/// 通过 GitHub Contents API 将本地数据按【年份分片】备份到仓库的
+/// gongmo_backup/ 目录：gongmo_backup/index.json（索引 + 分类等全局数据）
+/// 以及 gongmo_backup/2026.json 等年度数据文件。
+/// 每个文件只含一年数据，远低于 GitHub 单文件 100MB 的上限。
 /// Token 使用 flutter_secure_storage 加密存储，
 /// 仓库地址与上次同步时间存于 config.json。
 class GithubSyncService {
@@ -29,7 +31,7 @@ class GithubSyncService {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
   static const _tokenKey = 'github_token';
-  static const _backupPath = 'gongmo_backup.json';
+  static const _backupDir = 'gongmo_backup';
 
   final StorageService _storage = StorageService();
 
@@ -87,7 +89,60 @@ class GithubSyncService {
         'User-Agent': 'GongMo-App',
       };
 
-  /// 备份当前全部数据到 GitHub（存在则更新，不存在则创建）
+  Uri _dirUri(String repo) => Uri.parse(
+      '${AppConstants.githubApiBase}/repos/$repo/contents/$_backupDir');
+
+  Uri _fileUri(String repo, String name) => Uri.parse(
+      '${AppConstants.githubApiBase}/repos/$repo/contents/$_backupDir/$name');
+
+  /// 列出远端备份目录：文件名 -> sha
+  Future<Map<String, String>> _remoteShas(String repo, String token) async {
+    final res =
+        await _send(() => http.get(_dirUri(repo), headers: _headers(token)));
+    if (res.statusCode == 404) return {};
+    if (res.statusCode != 200) throw _errorFor(res.statusCode);
+    final body = json.decode(res.body);
+    if (body is! List) return {};
+    final shas = <String, String>{};
+    for (final item in body.whereType<Map>()) {
+      final name = item['name'] as String?;
+      final sha = item['sha'] as String?;
+      if (name != null && sha != null) shas[name] = sha;
+    }
+    return shas;
+  }
+
+  Future<void> _putFile(String repo, String token, String name,
+      String content, Map<String, String> shas, String commitMsg) async {
+    final res = await _send(() => http.put(
+          _fileUri(repo, name),
+          headers: _headers(token),
+          body: json.encode({
+            'message': commitMsg,
+            'content': base64Encode(utf8.encode(content)),
+            if (shas[name] != null) 'sha': shas[name],
+          }),
+        ));
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw _errorFor(res.statusCode);
+    }
+  }
+
+  Future<String?> _getFile(String repo, String token, String name) async {
+    final res = await _send(
+        () => http.get(_fileUri(repo, name), headers: _headers(token)));
+    if (res.statusCode == 404) return null;
+    if (res.statusCode != 200) throw _errorFor(res.statusCode);
+    final body = json.decode(res.body);
+    if (body is! Map<String, dynamic> || body['content'] == null) return null;
+    return utf8.decode(
+        base64Decode((body['content'] as String).replaceAll('\n', '')));
+  }
+
+  /// 分片备份到 GitHub：
+  /// gongmo_backup/index.json（索引 + 分类/账户/标签等全局数据）
+  /// gongmo_backup/{年份}.json（该年份的计时 + 账目数据）
+  /// 每个文件只含一年数据，远低于 GitHub 单文件 100MB 上限
   Future<void> pushBackup() async {
     final repo = await getRepoUrl();
     final token = await getToken();
@@ -95,48 +150,39 @@ class GithubSyncService {
       throw GithubSyncException('请先在设置中绑定仓库并填写 Token');
     }
 
-    final payload = json.encode({
+    final yearData = _storage.exportDataByYear();
+    final years = yearData.keys.toList()..sort();
+    final indexContent = json.encode({
       'app': 'gongmo',
-      'version': 1,
+      'version': 2,
       'exportedAt': DateTime.now().toIso8601String(),
-      'data': _storage.exportAllData(),
+      'years': years,
+      'counts': {
+        'workEntries': _storage.workEntries.length,
+        'financeEntries': _storage.financeEntries.length,
+      },
+      'global': {
+        'categories': _storage.categories.map((e) => e.toJson()).toList(),
+        'accounts': _storage.accounts.map((e) => e.toJson()).toList(),
+        'timerTags': _storage.timerTags.map((e) => e.toJson()).toList(),
+      },
     });
 
-    final uri =
-        Uri.parse('${AppConstants.githubApiBase}/repos/$repo/contents/$_backupPath');
-    final headers = _headers(token);
-
-    // 先获取已有文件的 sha（更新时必填），不存在则为首次创建
-    String? sha;
-    final getRes =
-        await _send(() => http.get(uri, headers: headers));
-    if (getRes.statusCode == 200) {
-      final body = json.decode(getRes.body);
-      if (body is Map<String, dynamic>) {
-        sha = body['sha'] as String?;
-      }
-    } else if (getRes.statusCode != 404) {
-      throw _errorFor(getRes.statusCode);
+    final shas = await _remoteShas(repo, token);
+    final commitMsg =
+        'GongMo backup ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}';
+    for (final y in years) {
+      final content = json.encode({
+        'app': 'gongmo',
+        'year': y,
+        'data': yearData[y],
+      });
+      await _putFile(repo, token, '$y.json', content, shas, commitMsg);
     }
-
-    final putRes = await _send(
-      () => http.put(
-        uri,
-        headers: headers,
-        body: json.encode({
-          'message':
-              'GongMo backup ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}',
-          'content': base64Encode(utf8.encode(payload)),
-          if (sha != null) 'sha': sha,
-        }),
-      ),
-    );
-    if (putRes.statusCode != 200 && putRes.statusCode != 201) {
-      throw _errorFor(putRes.statusCode);
-    }
+    await _putFile(repo, token, 'index.json', indexContent, shas, commitMsg);
   }
 
-  /// 从 GitHub 拉取备份数据，返回 data 字段（模型 Map 列表）
+  /// 拉取并合并所有年份分片，返回与 restoreAllData 对应的数据结构
   Future<Map<String, dynamic>> pullBackup() async {
     final repo = await getRepoUrl();
     final token = await getToken();
@@ -144,29 +190,82 @@ class GithubSyncService {
       throw GithubSyncException('请先在设置中绑定仓库并填写 Token');
     }
 
-    final uri =
-        Uri.parse('${AppConstants.githubApiBase}/repos/$repo/contents/$_backupPath');
-    final getRes = await _send(() => http.get(uri, headers: _headers(token)));
-
-    if (getRes.statusCode == 404) {
+    final indexContent = await _getFile(repo, token, 'index.json');
+    if (indexContent == null) {
       throw GithubSyncException('云端还没有备份文件');
     }
-    if (getRes.statusCode != 200) {
-      throw _errorFor(getRes.statusCode);
+    final index = json.decode(indexContent);
+    if (index is! Map<String, dynamic>) {
+      throw GithubSyncException('云端备份索引异常，无法恢复');
+    }
+    final years =
+        (index['years'] as List?)?.whereType<int>() ?? const <int>[];
+    final global = index['global'] is Map<String, dynamic>
+        ? index['global'] as Map<String, dynamic>
+        : <String, dynamic>{};
+
+    final work = <Map<String, dynamic>>[];
+    final finance = <Map<String, dynamic>>[];
+    for (final y in years) {
+      final content = await _getFile(repo, token, '$y.json');
+      if (content == null) continue;
+      final doc = json.decode(content);
+      if (doc is! Map<String, dynamic> ||
+          doc['data'] is! Map<String, dynamic>) {
+        continue;
+      }
+      final data = doc['data'] as Map<String, dynamic>;
+      if (data['workEntries'] is List) {
+        work.addAll((data['workEntries'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e)));
+      }
+      if (data['financeEntries'] is List) {
+        finance.addAll((data['financeEntries'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e)));
+      }
     }
 
-    final body = json.decode(getRes.body);
-    if (body is! Map<String, dynamic> || body['content'] == null) {
-      throw GithubSyncException('云端备份文件格式异常');
+    return {
+      'workEntries': work,
+      'financeEntries': finance,
+      'categories': global['categories'] ?? [],
+      'accounts': global['accounts'] ?? [],
+      'timerTags': global['timerTags'] ?? [],
+    };
+  }
+
+  /// 清空云端备份目录下的全部文件（危险操作），返回删除的文件数
+  Future<int> clearRemoteBackups() async {
+    final repo = await getRepoUrl();
+    final token = await getToken();
+    if (repo.isEmpty || token.isEmpty) {
+      throw GithubSyncException('请先在设置中绑定仓库并填写 Token');
     }
-    final decoded = utf8.decode(
-      base64Decode((body['content'] as String).replaceAll('\n', '')),
-    );
-    final doc = json.decode(decoded);
-    if (doc is! Map<String, dynamic> || doc['data'] is! Map<String, dynamic>) {
-      throw GithubSyncException('云端备份内容异常，无法恢复');
+    final shas = await _remoteShas(repo, token);
+    if (shas.isEmpty) {
+      throw GithubSyncException('云端还没有备份文件');
     }
-    return doc['data'] as Map<String, dynamic>;
+    var deleted = 0;
+    for (final entry in shas.entries) {
+      try {
+        final res = await _send(() => http.delete(
+              _fileUri(repo, entry.key),
+              headers: _headers(token),
+              body: json.encode({
+                'message': 'GongMo clear backups',
+                'sha': entry.value,
+              }),
+            ));
+        if (res.statusCode == 200) deleted++;
+      } on GithubSyncException {
+        rethrow;
+      } catch (_) {
+        // 单个文件删除失败时继续处理其余文件
+      }
+    }
+    return deleted;
   }
 
   Future<http.Response> _send(Future<http.Response> Function() request) async {

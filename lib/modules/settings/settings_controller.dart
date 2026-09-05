@@ -1,17 +1,14 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../data/services/github_sync_service.dart';
-import '../../data/services/storage_service.dart';
-import '../../data/models/category.dart';
 
 class SettingsController extends GetxController {
-  final StorageService _storage = StorageService();
   final GithubSyncService _sync = GithubSyncService.instance;
 
   final githubRepoUrl = ''.obs;
   final githubToken = ''.obs;
   final isGithubConnected = false.obs;
-
-  List<Category> get categories => _storage.categories;
+  final isClearingCloud = false.obs;
 
   @override
   void onInit() {
@@ -45,13 +42,23 @@ class SettingsController extends GetxController {
     await _sync.clearConfig();
   }
 
-  void addCategory(Category category) {
-    _storage.addCategory(category);
-    update();
-  }
-
-  void removeCategory(String id) {
-    _storage.removeCategory(id);
-    update();
+  /// 清空云端全部备份文件（危险操作，需调用方先做输入确认）
+  Future<void> clearCloudBackups() async {
+    if (isClearingCloud.value) return;
+    if (githubRepoUrl.value.isEmpty || githubToken.value.isEmpty) {
+      Get.snackbar('尚未绑定', '请先绑定仓库并填写 Token');
+      return;
+    }
+    isClearingCloud.value = true;
+    try {
+      final count = await _sync.clearRemoteBackups();
+      Get.snackbar('已清空', '共删除 $count 个云端备份文件');
+    } on GithubSyncException catch (e) {
+      Get.snackbar('清空失败', e.message);
+    } catch (e) {
+      Get.snackbar('清空失败', '发生未知错误，请重试');
+    } finally {
+      isClearingCloud.value = false;
+    }
   }
 }
