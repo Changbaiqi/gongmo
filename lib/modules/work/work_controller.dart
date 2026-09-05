@@ -217,6 +217,7 @@ class WorkController extends GetxController {
     clockEntry.value = entry;
     _startTick();
     loadEntries();
+    _refreshDashboard();
   }
 
   void clockOut() {
@@ -240,6 +241,7 @@ class WorkController extends GetxController {
 
     _updateTodayClockDuration();
     loadEntries();
+    _refreshDashboard();
   }
 
   void _updateTodayClockDuration() {
