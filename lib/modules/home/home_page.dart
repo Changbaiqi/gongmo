@@ -339,7 +339,7 @@ class _HomePageState extends State<HomePage> {
                 Container(
                   width: 1,
                   height: 26,
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
                   color: onPrimary.withValues(alpha: 0.25),
                 ),
                 Expanded(
@@ -366,6 +366,7 @@ class _HomePageState extends State<HomePage> {
   }) {
     final onPrimary = cs.onPrimary;
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
           width: 26,
@@ -586,7 +587,7 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.only(bottom: 6),
       child: SwipeActionCard(
         key: ValueKey(entry.id),
-        onEdit: () => _showEditFinanceDialog(fc, entry),
+        onEdit: () => _showEditFinanceSheet(fc, entry),
         onDelete: () => _confirmDeleteFinance(fc, entry),
         child: Card(
           margin: EdgeInsets.zero,
@@ -653,7 +654,8 @@ class _HomePageState extends State<HomePage> {
     ));
   }
 
-  void _showEditFinanceDialog(FinanceController fc, FinanceEntry entry) {
+  void _showEditFinanceSheet(FinanceController fc, FinanceEntry entry) {
+    final cs = Theme.of(context).colorScheme;
     final amountCtrl = TextEditingController(text: entry.amount.toString());
     final noteCtrl = TextEditingController(text: entry.description);
     final isExpense = (entry.type == FinanceType.expense).obs;
@@ -663,110 +665,208 @@ class _HomePageState extends State<HomePage> {
     final expCats = cats.where((c) => c.type == FinanceType.expense).toList();
     final incCats = cats.where((c) => c.type == FinanceType.income).toList();
 
-    Get.dialog(AlertDialog(
-      title: const Text('修改账目'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: amountCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: '金额',
-                prefixText: '¥ ',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Obx(() => Row(
-                  children: [
-                    ChoiceChip(
-                      label: const Text('支出'),
-                      selected: isExpense.value,
-                      selectedColor: Colors.red.shade100,
-                      onSelected: (_) {
-                        isExpense.value = true;
-                        if (expCats.isNotEmpty &&
-                            selectedCatId.value.isNotEmpty) {
-                          final cat = cats.cast().firstWhere(
-                              (c) => c.id == selectedCatId.value,
-                              orElse: () => cats.first);
-                          if (cat.type == FinanceType.income) {
-                            selectedCatId.value = expCats.first.id;
-                          }
-                        }
-                      },
+    Get.bottomSheet(
+      Container(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    const SizedBox(width: 10),
-                    ChoiceChip(
-                      label: const Text('收入'),
-                      selected: !isExpense.value,
-                      selectedColor: Colors.green.shade100,
-                      onSelected: (_) {
-                        isExpense.value = false;
-                        if (incCats.isNotEmpty &&
-                            selectedCatId.value.isNotEmpty) {
-                          final cat = cats.cast().firstWhere(
-                              (c) => c.id == selectedCatId.value,
-                              orElse: () => cats.first);
-                          if (cat.type == FinanceType.expense) {
-                            selectedCatId.value = incCats.first.id;
-                          }
-                        }
-                      },
-                    ),
-                  ],
-                )),
-            const SizedBox(height: 8),
-            Obx(() {
-              final activeCats = isExpense.value ? expCats : incCats;
-              return Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: activeCats.map((cat) {
-                  return ChoiceChip(
-                    label: Text(cat.name, style: const TextStyle(fontSize: 12)),
-                    selected: selectedCatId.value == cat.id,
-                    onSelected: (_) => selectedCatId.value = cat.id,
-                  );
-                }).toList(),
-              );
-            }),
-            const SizedBox(height: 8),
-            TextField(
-              controller: noteCtrl,
-              decoration: const InputDecoration(
-                labelText: '备注',
-              ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('修改账目',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  autofocus: true,
+                  style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                      fontFeatures: [FontFeature.tabularFigures()]),
+                  textAlign: TextAlign.center,
+                  decoration: const InputDecoration(
+                    hintText: '0.00',
+                    border: InputBorder.none,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Obx(() => Row(
+                      children: [
+                        Expanded(
+                          child: _typePill(
+                            label: '支出',
+                            icon: Icons.south_west_rounded,
+                            selected: isExpense.value,
+                            color: Colors.red.shade600,
+                            onTap: () {
+                              isExpense.value = true;
+                              _fixCategorySelection(
+                                  isExpense, expCats, incCats, selectedCatId);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _typePill(
+                            label: '收入',
+                            icon: Icons.north_east_rounded,
+                            selected: !isExpense.value,
+                            color: Colors.green.shade600,
+                            onTap: () {
+                              isExpense.value = false;
+                              _fixCategorySelection(
+                                  isExpense, expCats, incCats, selectedCatId);
+                            },
+                          ),
+                        ),
+                      ],
+                    )),
+                const SizedBox(height: 14),
+                _categoryGrid(
+                  cs: cs,
+                  isExpense: isExpense,
+                  expCats: expCats,
+                  incCats: incCats,
+                  selectedCatId: selectedCatId,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '备注',
+                  ),
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final amount = double.tryParse(amountCtrl.text);
+                      if (amount == null || amount <= 0) {
+                        Get.snackbar('提示', '请输入有效金额');
+                        return;
+                      }
+                      entry.amount = amount;
+                      entry.type = isExpense.value
+                          ? FinanceType.expense
+                          : FinanceType.income;
+                      entry.categoryId = selectedCatId.value;
+                      entry.description = noteCtrl.text;
+                      entry.updatedAt = DateTime.now();
+                      fc.saveEntry(entry);
+                      _dc.refreshData();
+                      Get.back();
+                    },
+                    child: const Text('保存修改'),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
-      actions: [
-        TextButton(onPressed: () => Get.back(), child: const Text('取消')),
-        ElevatedButton(
-          onPressed: () {
-            final amount = double.tryParse(amountCtrl.text);
-            if (amount == null || amount <= 0) {
-              Get.snackbar('提示', '请输入有效金额');
-              return;
-            }
-            entry.amount = amount;
-            entry.type =
-                isExpense.value ? FinanceType.expense : FinanceType.income;
-            entry.categoryId = selectedCatId.value;
-            entry.description = noteCtrl.text;
-            entry.updatedAt = DateTime.now();
-            fc.saveEntry(entry);
-            _dc.refreshData();
-            Get.back();
-          },
-          child: const Text('保存修改'),
-        ),
-      ],
-    ));
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  /// 切换收支类型后，若当前选中分类不属于该类型则回落到第一个分类
+  void _fixCategorySelection(RxBool isExpense, List<Category> expCats,
+      List<Category> incCats, RxString selectedCatId) {
+    final active = isExpense.value ? expCats : incCats;
+    if (active.isEmpty) return;
+    if (!active.any((c) => c.id == selectedCatId.value)) {
+      selectedCatId.value = active.first.id;
+    }
+  }
+
+  /// 分类图标网格（记一笔 / 修改账目 共用）
+  Widget _categoryGrid({
+    required ColorScheme cs,
+    required RxBool isExpense,
+    required List<Category> expCats,
+    required List<Category> incCats,
+    required RxString selectedCatId,
+  }) {
+    return Obx(() {
+      final activeCats = isExpense.value ? expCats : incCats;
+      if (activeCats.isEmpty) return const SizedBox.shrink();
+      if (selectedCatId.value.isEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          selectedCatId.value = activeCats.first.id;
+        });
+      }
+      return GridView.count(
+        crossAxisCount: 4,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        childAspectRatio: 0.95,
+        children: activeCats.map((cat) {
+          final selected = selectedCatId.value == cat.id;
+          final color = IconUtils.hex(cat.color, cs.primary);
+          return GestureDetector(
+            onTap: () => selectedCatId.value = cat.id,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: selected ? color : color.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: selected ? color : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: Icon(
+                    IconUtils.category(cat.icon),
+                    size: 20,
+                    color: selected ? Colors.white : color,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  cat.name,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: selected ? color : cs.onSurfaceVariant,
+                    fontWeight:
+                        selected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      );
+    });
   }
 
   void _showQuickFinance() {
@@ -861,69 +961,13 @@ class _HomePageState extends State<HomePage> {
                       ],
                     )),
                 const SizedBox(height: 14),
-                Obx(() {
-                  final activeCats = isExpense.value ? expCats : incCats;
-                  if (activeCats.isEmpty) return const SizedBox.shrink();
-                  if (selectedCatId.value.isEmpty) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      selectedCatId.value = activeCats.first.id;
-                    });
-                  }
-                  return GridView.count(
-                    crossAxisCount: 4,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 0.95,
-                    children: activeCats.map((cat) {
-                      final selected = selectedCatId.value == cat.id;
-                      final color = IconUtils.hex(cat.color, cs.primary);
-                      return GestureDetector(
-                        onTap: () => selectedCatId.value = cat.id,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              width: 46,
-                              height: 46,
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? color
-                                    : color.withValues(alpha: 0.12),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color:
-                                      selected ? color : Colors.transparent,
-                                  width: 2,
-                                ),
-                              ),
-                              child: Icon(
-                                IconUtils.category(cat.icon),
-                                size: 20,
-                                color: selected ? Colors.white : color,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              cat.name,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                color: selected
-                                    ? color
-                                    : cs.onSurfaceVariant,
-                                fontWeight: selected
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  );
-                }),
+                _categoryGrid(
+                  cs: cs,
+                  isExpense: isExpense,
+                  expCats: expCats,
+                  incCats: incCats,
+                  selectedCatId: selectedCatId,
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: noteCtrl,
