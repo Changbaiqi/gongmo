@@ -50,19 +50,32 @@ class GithubSyncService {
     return '${parts[0]}/${parts[1]}';
   }
 
+  /// 清洗 Token：去除所有空白、零宽字符与 BOM（手机粘贴常见污染源）
+  static String sanitizeToken(String token) => token
+      .replaceAll(RegExp(r'[\s\uFEFF\u200B\u200C\u200D\u2060]'), '');
+
+  /// 校验 Token 是否合法（本地格式校验）
+  static bool isValidTokenFormat(String token) {
+    if (token.isEmpty) return false;
+    // 经典 Token: ghp_/gho_/ghu_/ghs_/ghr_ 前缀；细粒度: github_pat_
+    return RegExp(r'^(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)').hasMatch(token);
+  }
+
   Future<String> getRepoUrl() async =>
       (_storage.getConfig('github_repo') as String?) ?? '';
 
   Future<void> saveRepoUrl(String repo) =>
       _storage.setConfig('github_repo', repo);
 
-  Future<String> getToken() async => await _secure.read(key: _tokenKey) ?? '';
+  Future<String> getToken() async =>
+      sanitizeToken(await _secure.read(key: _tokenKey) ?? '');
 
   Future<void> saveToken(String token) async {
-    if (token.isEmpty) {
+    final clean = sanitizeToken(token);
+    if (clean.isEmpty) {
       await _secure.delete(key: _tokenKey);
     } else {
-      await _secure.write(key: _tokenKey, value: token);
+      await _secure.write(key: _tokenKey, value: clean);
     }
   }
 
@@ -278,7 +291,51 @@ class GithubSyncService {
     }
   }
 
-  GithubSyncException _errorFor(int statusCode) {
+  /// 验证仓库地址与 Token 是否可用（保存配置时调用）
+  Future<void> testConnection() async {
+    final repo = await getRepoUrl();
+    final token = await getToken();
+    if (repo.isEmpty || token.isEmpty) {
+      throw GithubSyncException('请先填写仓库地址和 Token');
+    }
+    final res = await _send(() => http.get(
+          Uri.parse('${AppConstants.githubApiBase}/repos/$repo'),
+          headers: _headers(token),
+        ));
+    if (res.statusCode != 200) {
+      throw _errorFor(res.statusCode, res.body);
+    }
+  }
+
+  GithubSyncException _errorFor(int statusCode, [String? body]) {
+    String? detail;
+    if (body != null && body.isNotEmpty) {
+      try {
+        final b = json.decode(body);
+        if (b is Map<String, dynamic> && b['message'] is String) {
+          detail = b['message'] as String;
+        }
+      } catch (_) {}
+    }
+    switch (statusCode) {
+      case 401:
+        return GithubSyncException(
+            'Token 无效或已过期${detail != null ? '（GitHub: $detail）' : ''}，请重新生成并填写');
+      case 403:
+        final rateLimited =
+            detail != null && detail.toLowerCase().contains('rate limit');
+        return GithubSyncException(rateLimited
+            ? 'GitHub API 请求频率超限，请稍后再试'
+            : 'Token 权限不足（需要 Contents 读写权限）${detail != null ? '（GitHub: $detail）' : ''}');
+      case 404:
+        return GithubSyncException('仓库不存在或 Token 无权访问该仓库，请检查地址与 Token 的仓库授权');
+      case 301:
+        return GithubSyncException('仓库已迁移，请更新仓库地址');
+      default:
+        return GithubSyncException(
+            'GitHub 请求失败（HTTP $statusCode）${detail != null ? '：$detail' : ''}');
+    }
+  }
     switch (statusCode) {
       case 401:
       case 403:
