@@ -55,7 +55,7 @@ class _SwipeActionCardState extends State<SwipeActionCard>
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: GestureDetector(
         onHorizontalDragEnd: (details) {
           if (details.primaryVelocity != null) {

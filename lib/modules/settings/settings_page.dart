@@ -1,5 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import '../../app/theme/app_theme.dart';
+import '../../app/theme/theme_controller.dart';
 import '../../core/utils/icon_utils.dart';
 import '../../data/models/finance_entry.dart';
 import 'settings_controller.dart';
@@ -10,6 +15,7 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final SettingsController ctrl = Get.put(SettingsController());
+    final ThemeController tc = Get.put(ThemeController());
 
     return Scaffold(
       appBar: AppBar(
@@ -19,6 +25,9 @@ class SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _buildSectionTitle('外观'),
+          _buildAppearanceCard(context, tc),
+          const SizedBox(height: 24),
           _buildSectionTitle('GitHub 连接'),
           Card(
             child: Column(
@@ -119,6 +128,227 @@ class SettingsPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildAppearanceCard(BuildContext context, ThemeController tc) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Obx(() => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('深色模式',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _modePill(context, tc, '跟随系统', ThemeMode.system),
+                    const SizedBox(width: 8),
+                    _modePill(context, tc, '浅色', ThemeMode.light),
+                    const SizedBox(width: 8),
+                    _modePill(context, tc, '深色', ThemeMode.dark),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text('主题配色',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    for (final p in AppThemePreset.values) ...[
+                      Expanded(child: _presetTile(context, tc, p)),
+                      if (p != AppThemePreset.values.last)
+                        const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text('自定义背景',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    if (tc.hasBackground) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.file(
+                          File(tc.backgroundPath.value),
+                          width: 52,
+                          height: 52,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          errorBuilder: (_, __, ___) =>
+                              Container(width: 52, height: 52, color:
+                                  cs.surfaceContainerHighest),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickBackgroundImage(tc),
+                        icon: const Icon(Icons.image_outlined, size: 18),
+                        label: Text(tc.hasBackground ? '更换背景' : '选择背景图片'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                          backgroundColor: cs.surface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ),
+                    if (tc.hasBackground) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () {
+                          tc.clearBackground();
+                          Get.snackbar('已清除', '已恢复默认背景');
+                        },
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        tooltip: '清除背景',
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  tc.hasBackground
+                      ? '背景图会铺在所有页面下方，卡片保持不透明'
+                      : '从相册选择图片作为应用背景',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+                ),
+              ],
+            )),
+      ),
+    );
+  }
+
+  Widget _modePill(
+      BuildContext context, ThemeController tc, String label, ThemeMode mode) {
+    final cs = Theme.of(context).colorScheme;
+    final selected = tc.mode.value == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => tc.setMode(mode),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: selected
+                ? cs.primary.withValues(alpha: 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? cs.primary
+                  : cs.outlineVariant.withValues(alpha: 0.6),
+            ),
+          ),
+          child: Center(
+            child: Text(label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: selected
+                      ? cs.primary
+                      : cs.onSurfaceVariant.withValues(alpha: 0.8),
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                )),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _presetTile(
+      BuildContext context, ThemeController tc, AppThemePreset preset) {
+    final cs = Theme.of(context).colorScheme;
+    final selected = tc.preset.value == preset;
+    return GestureDetector(
+      onTap: () => tc.setPreset(preset),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? cs.primary.withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? cs.primary
+                : cs.outlineVariant.withValues(alpha: 0.6),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (final c in preset.swatches) ...[
+                  Container(
+                    width: 15,
+                    height: 15,
+                    decoration: BoxDecoration(
+                      color: c,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.08),
+                      ),
+                    ),
+                  ),
+                  if (c != preset.swatches.last) const SizedBox(width: 4),
+                ],
+              ],
+            ),
+            const SizedBox(height: 7),
+            Text(preset.label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: selected
+                      ? cs.primary
+                      : cs.onSurfaceVariant.withValues(alpha: 0.8),
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickBackgroundImage(ThemeController tc) async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final docs = await getApplicationDocumentsDirectory();
+      final bgDir = Directory('${docs.path}/gongmo_data');
+      if (!await bgDir.exists()) {
+        await bgDir.create(recursive: true);
+      }
+      final dest = File('${bgDir.path}/background.jpg');
+      if (await dest.exists()) {
+        await dest.delete();
+      }
+      await picked.saveTo(dest.path);
+      tc.setBackgroundImage(dest.path);
+      Get.snackbar('已设置', '自定义背景已更新');
+    } catch (e) {
+      Get.snackbar('设置失败', '选择背景图片失败，请重试');
+    }
   }
 
   void _showGithubConfig(SettingsController ctrl) {

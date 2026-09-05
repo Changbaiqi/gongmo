@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import '../../core/constants/app_constants.dart';
 import '../models/work_entry.dart';
 import '../models/finance_entry.dart';
 import '../models/category.dart';
@@ -20,6 +21,7 @@ class StorageService {
   List<Category> _categories = [];
   List<Account> _accounts = [];
   List<TimerTag> _timerTags = [];
+  Map<String, dynamic> _config = {};
 
   List<WorkEntry> get workEntries => _workEntries;
   List<FinanceEntry> get financeEntries => _financeEntries;
@@ -74,6 +76,31 @@ class StorageService {
     if (_timerTags.isEmpty) {
       _timerTags = TimerTag.defaults();
       await _saveList('timer_tags.json', _timerTags);
+    }
+    await _loadConfig();
+  }
+
+  /// 读取轻量配置项（存储在 config.json）
+  dynamic getConfig(String key) => _config[key];
+
+  /// 写入轻量配置项
+  Future<void> setConfig(String key, dynamic value) async {
+    _config[key] = value;
+    final file = File('${_dataDir.path}/${AppConstants.configFile}');
+    await file.writeAsString(json.encode(_config));
+  }
+
+  Future<void> _loadConfig() async {
+    final file = File('${_dataDir.path}/${AppConstants.configFile}');
+    if (!await file.exists()) return;
+    try {
+      final content = await file.readAsString();
+      final decoded = json.decode(content);
+      if (decoded is Map<String, dynamic>) {
+        _config = decoded;
+      }
+    } catch (_) {
+      _config = {};
     }
   }
 

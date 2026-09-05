@@ -274,22 +274,27 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildBalanceCard() {
+    final cs = Theme.of(context).colorScheme;
     return Obx(() {
       final income = _dc.monthIncome.value;
       final expense = _dc.monthExpense.value;
       final balance = income - expense;
+      final onPrimary = cs.onPrimary;
       return Container(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)],
+            colors: [
+              cs.primary,
+              Color.lerp(cs.primary, onPrimary, 0.22)!,
+            ],
           ),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF4CAF50).withValues(alpha: 0.3),
+              color: cs.primary.withValues(alpha: 0.3),
               blurRadius: 18,
               offset: const Offset(0, 6),
             ),
@@ -301,22 +306,23 @@ class _HomePageState extends State<HomePage> {
             Row(
               children: [
                 Icon(Icons.account_balance_wallet_rounded,
-                    color: Colors.white.withValues(alpha: 0.8), size: 16),
+                    color: onPrimary.withValues(alpha: 0.8), size: 16),
                 const SizedBox(width: 6),
                 Text('本月结余',
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.85),
+                        color: onPrimary.withValues(alpha: 0.85),
                         fontSize: 13)),
               ],
             ),
             const SizedBox(height: 6),
             Text(
               '¥${balance.toStringAsFixed(2)}',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: onPrimary,
                 fontSize: 30,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
             const SizedBox(height: 14),
@@ -324,6 +330,7 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Expanded(
                   child: _balanceSubItem(
+                    cs: cs,
                     icon: Icons.arrow_outward_rounded,
                     label: '本月收入',
                     value: income,
@@ -332,10 +339,12 @@ class _HomePageState extends State<HomePage> {
                 Container(
                   width: 1,
                   height: 26,
-                  color: Colors.white.withValues(alpha: 0.25),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                  color: onPrimary.withValues(alpha: 0.25),
                 ),
                 Expanded(
                   child: _balanceSubItem(
+                    cs: cs,
                     icon: Icons.south_west_rounded,
                     label: '本月支出',
                     value: expense,
@@ -350,20 +359,22 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _balanceSubItem({
+    required ColorScheme cs,
     required IconData icon,
     required String label,
     required double value,
   }) {
+    final onPrimary = cs.onPrimary;
     return Row(
       children: [
         Container(
           width: 26,
           height: 26,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.18),
+            color: onPrimary.withValues(alpha: 0.18),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, size: 14, color: Colors.white),
+          child: Icon(icon, size: 14, color: onPrimary),
         ),
         const SizedBox(width: 8),
         Column(
@@ -371,13 +382,14 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(label,
                 style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: onPrimary.withValues(alpha: 0.7),
                     fontSize: 11)),
             Text('¥${value.toStringAsFixed(2)}',
-                style: const TextStyle(
-                    color: Colors.white,
+                style: TextStyle(
+                    color: onPrimary,
                     fontSize: 14,
-                    fontWeight: FontWeight.w600)),
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: const [FontFeature.tabularFigures()])),
           ],
         ),
       ],

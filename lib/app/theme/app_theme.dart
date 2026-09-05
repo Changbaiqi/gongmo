@@ -1,16 +1,31 @@
 import 'package:flutter/material.dart';
 
+/// 主题配色方案
+enum AppThemePreset {
+  green('墨绿', [Color(0xFF2E7D32), Color(0xFF4CAF50)]),
+  mono('黑白', [Color(0xFF212121), Color(0xFF9E9E9E)]),
+  tomato('番茄红', [Color(0xFFE53935), Color(0xFFFF8A65)]);
+
+  final String label;
+  final List<Color> swatches;
+  const AppThemePreset(this.label, this.swatches);
+}
+
 class AppTheme {
   static const Color seedColor = Color(0xFF2E7D32);
 
-  static ThemeData _build(Brightness brightness) {
+  /// 构建主题
+  ///
+  /// [background] 为 true 时（使用自定义背景图），
+  /// Scaffold 背景改为半透明，让背景图透出，同时卡片保持不透明保证可读性。
+  static ThemeData build({
+    required Brightness brightness,
+    AppThemePreset preset = AppThemePreset.green,
+    bool background = false,
+  }) {
     final isDark = brightness == Brightness.dark;
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: seedColor,
-      brightness: brightness,
-    );
-    final cardColor =
-        isDark ? const Color(0xFF171B17) : Colors.white;
+    final colorScheme = _schemeFor(preset, brightness);
+    final cardColor = _cardColorFor(preset, isDark);
 
     OutlineInputBorder border(Color color, [double width = 1]) =>
         OutlineInputBorder(
@@ -22,8 +37,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       brightness: brightness,
-      scaffoldBackgroundColor:
-          isDark ? const Color(0xFF0E110E) : const Color(0xFFF5F6F3),
+      scaffoldBackgroundColor: _scaffoldBgFor(preset, isDark, background),
       splashFactory: InkSparkle.splashFactory,
       appBarTheme: AppBarTheme(
         centerTitle: true,
@@ -126,7 +140,8 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: isDark ? const Color(0xFF2C322C) : const Color(0xFF252A25),
+        backgroundColor:
+            isDark ? const Color(0xFF2C322C) : const Color(0xFF252A25),
         contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -141,9 +156,8 @@ class AppTheme {
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? Colors.white
-              : null,
+          (states) =>
+              states.contains(WidgetState.selected) ? Colors.white : null,
         ),
         trackColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
@@ -157,6 +171,57 @@ class AppTheme {
     );
   }
 
-  static final ThemeData lightTheme = _build(Brightness.light);
-  static final ThemeData darkTheme = _build(Brightness.dark);
+  static ColorScheme _schemeFor(AppThemePreset preset, Brightness brightness) {
+    switch (preset) {
+      case AppThemePreset.green:
+        return ColorScheme.fromSeed(
+          seedColor: seedColor,
+          brightness: brightness,
+        );
+      case AppThemePreset.tomato:
+        return ColorScheme.fromSeed(
+          seedColor: const Color(0xFFE53935),
+          brightness: brightness,
+        );
+      case AppThemePreset.mono:
+        // 灰色种子生成去饱和的黑白配色
+        return ColorScheme.fromSeed(
+          seedColor: const Color(0xFF757575),
+          brightness: brightness,
+        );
+    }
+  }
+
+  static Color _cardColorFor(AppThemePreset preset, bool isDark) {
+    if (!isDark) return Colors.white;
+    switch (preset) {
+      case AppThemePreset.green:
+        return const Color(0xFF171B17);
+      case AppThemePreset.mono:
+        return const Color(0xFF1A1A1A);
+      case AppThemePreset.tomato:
+        return const Color(0xFF1E1514);
+    }
+  }
+
+  static Color _scaffoldBgFor(
+      AppThemePreset preset, bool isDark, bool background) {
+    if (background) {
+      return isDark
+          ? Colors.black.withValues(alpha: 0.72)
+          : Colors.white.withValues(alpha: 0.8);
+    }
+    switch (preset) {
+      case AppThemePreset.green:
+        return isDark ? const Color(0xFF0E110E) : const Color(0xFFF5F6F3);
+      case AppThemePreset.mono:
+        return isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF7F7F7);
+      case AppThemePreset.tomato:
+        return isDark ? const Color(0xFF150F0E) : const Color(0xFFFAF5F4);
+    }
+  }
+
+  /// 兼容旧调用
+  static ThemeData get lightTheme => build(brightness: Brightness.light);
+  static ThemeData get darkTheme => build(brightness: Brightness.dark);
 }
