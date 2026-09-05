@@ -7,6 +7,7 @@ import '../../core/widgets/flip_clock.dart';
 import '../../data/models/work_entry.dart';
 import '../../data/models/timer_tag.dart';
 import '../../data/services/storage_service.dart';
+import 'widgets/work_stats_view.dart';
 import 'work_controller.dart';
 
 class WorkPage extends StatefulWidget {
@@ -16,13 +17,21 @@ class WorkPage extends StatefulWidget {
   State<WorkPage> createState() => _WorkPageState();
 }
 
-class _WorkPageState extends State<WorkPage>
-    with SingleTickerProviderStateMixin {
+class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
   final WorkController _ctrl = Get.put(WorkController());
   late AnimationController _pulseCtrl;
 
   DateTime _now = DateTime.now();
   Timer? _clockTimer;
+
+  /// 顶部页签：false=计时（正计时+打卡合并页） true=数据统计
+  bool _statsMode = false;
+
+  /// 主体左右滑动：0=正计时 1=打卡计时
+  late final PageController _modePageCtrl = PageController(
+    initialPage: _ctrl.isClockedIn.value ? 1 : 0,
+  );
+  int _modeIdx = 0;
 
   @override
   void initState() {
@@ -40,35 +49,60 @@ class _WorkPageState extends State<WorkPage>
   void dispose() {
     _clockTimer?.cancel();
     _pulseCtrl.dispose();
+    _modePageCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() => Column(
-          children: [
-            const SizedBox(height: 8),
-            _buildModeToggle(),
-            if (_ctrl.isClockMode.value) ...[
-              const SizedBox(height: 12),
-              Expanded(child: _buildClockView()),
-            ] else ...[
-              const SizedBox(height: 16),
-              _buildTagRow(),
-              const SizedBox(height: 12),
-              Expanded(
-                child: _ctrl.isTimerRunning.value
-                    ? _buildRunningView()
-                    : _buildIdleView(),
-              ),
-            ],
-          ],
-        ));
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        _buildTopToggle(),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: KeyedSubtree(
+              key: ValueKey(_statsMode),
+              child:
+                  _statsMode ? const WorkStatsView() : _buildMergedTimerPage(),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
-  Widget _buildModeToggle() {
+  // ---------------- 顶部页签：计时 | 统计 ----------------
+
+  Widget _buildTopToggle() {
     final cs = Theme.of(context).colorScheme;
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(20));
+
+    Widget segment(String label, bool active, VoidCallback onTap) {
+      return GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: ShapeDecoration(
+            color:
+                active ? cs.primary.withValues(alpha: 0.12) : Colors.transparent,
+            shape: shape,
+          ),
+          child: Center(
+            child: Text(label,
+                style: TextStyle(
+                  color: active
+                      ? cs.primary
+                      : cs.onSurfaceVariant.withValues(alpha: 0.7),
+                  fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                  fontSize: 14,
+                )),
+          ),
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -84,10 +118,14 @@ class _WorkPageState extends State<WorkPage>
         child: Row(
           children: [
             Expanded(
-              child: _modeSegment('计时', !_ctrl.isClockMode.value, cs, shape),
+              child: segment('计时', !_statsMode, () {
+                if (_statsMode) setState(() => _statsMode = false);
+              }),
             ),
             Expanded(
-              child: _modeSegment('打卡', _ctrl.isClockMode.value, cs, shape),
+              child: segment('统计', _statsMode, () {
+                if (!_statsMode) setState(() => _statsMode = true);
+              }),
             ),
           ],
         ),
@@ -95,54 +133,118 @@ class _WorkPageState extends State<WorkPage>
     );
   }
 
-  Widget _modeSegment(String label, bool active, ColorScheme cs, ShapeBorder shape) {
-    return GestureDetector(
-      onTap: () {
-        if (!active) _ctrl.toggleMode();
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: ShapeDecoration(
-          color: active ? cs.primary.withValues(alpha: 0.12) : Colors.transparent,
-          shape: shape,
+  // ---------------- 合并后的计时页 ----------------
+
+  Widget _buildMergedTimerPage() {
+    return Obx(() => Column(
+          children: [
+            const SizedBox(height: 8),
+            _buildTagRow(),
+            const SizedBox(height: 2),
+            _buildModePills(),
+            Expanded(
+              child: PageView(
+                controller: _modePageCtrl,
+                onPageChanged: (i) => setState(() => _modeIdx = i),
+                children: [
+                  _buildTimerPage(),
+                  _buildClockPage(),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            _buildTodayRecords(),
+          ],
+        ));
+  }
+
+  /// 正计时 | 打卡 切换 pills（与滑动联动）
+  Widget _buildModePills() {
+    final cs = Theme.of(context).colorScheme;
+
+    Widget pill(String label, int index) {
+      final active = _modeIdx == index;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (_modePageCtrl.hasClients && _modeIdx != index) {
+            HapticFeedback.selectionClick();
+            _modePageCtrl.animateToPage(
+              index,
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+            );
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+          decoration: BoxDecoration(
+            color:
+                active ? cs.primary.withValues(alpha: 0.12) : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                index == 0 ? Icons.timer_outlined : Icons.punch_clock_outlined,
+                size: 15,
+                color: active ? cs.primary : cs.onSurfaceVariant,
+              ),
+              const SizedBox(width: 5),
+              Text(label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: active
+                        ? cs.primary
+                        : cs.onSurfaceVariant.withValues(alpha: 0.8),
+                    fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                  )),
+            ],
+          ),
         ),
-        child: Center(
-          child: Text(label,
-              style: TextStyle(
-                color: active ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.7),
-                fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-                fontSize: 14,
-              )),
-        ),
-      ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        pill('正计时', 0),
+        const SizedBox(width: 8),
+        pill('打卡', 1),
+      ],
     );
   }
 
-  Widget _buildClockView() {
+  /// 页 0：正计时（PageView 页面自身充满视口，不能用 Expanded）
+  Widget _buildTimerPage() {
+    return Obx(() => _ctrl.isTimerRunning.value
+        ? _buildRunningView()
+        : _buildIdleView());
+  }
+
+  /// 页 1：打卡
+  Widget _buildClockPage() {
     final cs = Theme.of(context).colorScheme;
-    final todayRecords = _ctrl.entries
-        .where((e) =>
-            e.projectName == '打卡' &&
-            DateHelper.isSameDay(e.startTime, DateTime.now()))
-        .toList();
+    final busy = _ctrl.isTimerRunning.value && !_ctrl.isClockedIn.value;
 
     return Column(
       children: [
         const Spacer(flex: 2),
+        _bigClock(),
         if (_ctrl.isClockedIn.value) ...[
-          _bigClock(),
           const SizedBox(height: 6),
           Text('上班: ${DateHelper.formatTime(_ctrl.clockInTime.value!)}',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15)),
           const SizedBox(height: 4),
-          Obx(() => Text(
-                '已打卡 ${DateHelper.formatDuration(DateTime.now().difference(_ctrl.clockInTime.value!))}',
-                style: TextStyle(
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                    fontSize: 13),
-              )),
-          const SizedBox(height: 32),
+          Text(
+            '已打卡 ${DateHelper.formatDuration(DateTime.now().difference(_ctrl.clockInTime.value!))}',
+            style: TextStyle(
+                color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                fontSize: 13),
+          ),
+          const SizedBox(height: 24),
           _clockButton(
             label: '下班',
             isStop: true,
@@ -152,7 +254,6 @@ class _WorkPageState extends State<WorkPage>
             },
           ),
         ] else ...[
-          _bigClock(),
           const SizedBox(height: 6),
           Text(DateHelper.formatDate(_now),
               style: TextStyle(
@@ -163,81 +264,55 @@ class _WorkPageState extends State<WorkPage>
               style: TextStyle(
                   color: cs.onSurfaceVariant.withValues(alpha: 0.6),
                   fontSize: 13)),
-          const SizedBox(height: 32),
-          _clockButton(
-            label: '上班',
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              _ctrl.clockIn();
-            },
-          ),
+          const SizedBox(height: 24),
+          if (busy) ...[
+            Text('正计时进行中，结束后方可打卡',
+                style: TextStyle(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                    fontSize: 12)),
+            const SizedBox(height: 12),
+            const SizedBox(height: 84),
+          ] else
+            _clockButton(
+              label: '上班',
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                _ctrl.clockIn();
+              },
+            ),
         ],
         const Spacer(flex: 2),
-        _buildClockRecords(todayRecords),
       ],
     );
   }
 
-  Widget _bigClock() {
-    return FlipClock(time: _now);
-  }
+  // ---------------- 统一今日记录 ----------------
 
-  Widget _clockButton({
-    required String label,
-    required VoidCallback onTap,
-    bool isStop = false,
-  }) {
-    final color = isStop ? const Color(0xFFEF5350) : const Color(0xFF4CAF50);
-    final gradient = isStop
-        ? const [Color(0xFFE53935), Color(0xFFC62828)]
-        : const [Color(0xFF43A047), Color(0xFF2E7D32)];
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 84,
-        height: 84,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: gradient,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.35),
-              blurRadius: 18,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(label,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClockRecords(List<WorkEntry> records) {
+  Widget _buildTodayRecords() {
     final cs = Theme.of(context).colorScheme;
-    final completed =
-        records.where((e) => e.status == WorkStatus.completed).toList();
-    final totalDur = completed.fold(
-        Duration.zero, (sum, e) => sum + (e.duration ?? Duration.zero));
+    final todayEntries = _ctrl.entries
+        .where((e) => DateHelper.isSameDay(e.startTime, DateTime.now()))
+        .toList();
+    final totalDur = todayEntries.fold<Duration>(
+      Duration.zero,
+      (sum, e) => sum + (e.duration ?? e.liveElapsed),
+    );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+    return Container(
+      height: 208,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text('今日打卡记录',
+              Text('今日记录',
                   style: TextStyle(
                       color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 11,
@@ -245,61 +320,99 @@ class _WorkPageState extends State<WorkPage>
                       letterSpacing: 1)),
               const Spacer(),
               if (totalDur > Duration.zero)
-                Text('共 ${DateHelper.formatDuration(totalDur)}',
+                Text('合计 ${DateHelper.formatDuration(totalDur)}',
                     style: TextStyle(
-                        color: Colors.green.shade600,
+                        color: cs.primary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600)),
             ],
           ),
-          const SizedBox(height: 8),
-          if (completed.isEmpty)
-            Center(
-              child: Text('暂无记录',
-                  style: TextStyle(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-                      fontSize: 12)),
-            ),
-          ...completed.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                          shape: BoxShape.circle, color: Color(0xFF4CAF50)),
-                    ),
-                    const SizedBox(width: 10),
-                    Text('上班 ${DateHelper.formatTime(e.startTime)}',
-                        style: const TextStyle(fontSize: 13)),
-                    const SizedBox(width: 6),
-                    Icon(Icons.arrow_forward_rounded,
-                        size: 12, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Text(
-                        '下班 ${e.endTime != null ? DateHelper.formatTime(e.endTime!) : "..."}',
-                        style: const TextStyle(fontSize: 13)),
-                    const Spacer(),
-                    if (e.duration != null)
-                      Text(DateHelper.formatDuration(e.duration!),
-                          style: TextStyle(
-                              color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                              fontSize: 12)),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => _confirmDelete(e),
-                      child: Icon(Icons.close_rounded,
-                          size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-                    ),
-                  ],
-                ),
-              )),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
+          Expanded(
+            child: todayEntries.isEmpty
+                ? Center(
+                    child: Text('暂无记录，开始计时或打卡后自动记录',
+                        style: TextStyle(
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                            fontSize: 12)),
+                  )
+                : ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: todayEntries.length,
+                    itemExtent: 34,
+                    itemBuilder: (context, index) =>
+                        _buildSessionItem(todayEntries[index]),
+                  ),
+          ),
         ],
       ),
     );
   }
+
+  Widget _buildSessionItem(WorkEntry entry) {
+    final cs = Theme.of(context).colorScheme;
+    final isClock = entry.projectName == '打卡';
+    final tag = _ctrl.tags.cast<TimerTag?>().firstWhere(
+          (t) => t?.name == entry.projectName,
+          orElse: () => null,
+        );
+    final color = tag != null
+        ? _parseColor(tag.color)
+        : (isClock ? const Color(0xFF4CAF50) : Colors.grey);
+    final running = entry.endTime == null;
+    final range = running
+        ? '${DateHelper.formatTime(entry.startTime)} - 进行中'
+        : '${DateHelper.formatTime(entry.startTime)} - ${DateHelper.formatTime(entry.endTime!)}';
+
+    return Row(
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Row(
+            children: [
+              Text(
+                  entry.projectName.isNotEmpty ? entry.projectName : '未命名',
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w500)),
+              if (tag != null && tag.isWork)
+                const Icon(Icons.star_rounded, size: 12, color: Colors.amber),
+              const SizedBox(width: 8),
+              Text(range,
+                  style: TextStyle(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                      fontSize: 11)),
+            ],
+          ),
+        ),
+        Text(
+          DateHelper.formatDuration(entry.duration ?? entry.liveElapsed),
+          style: TextStyle(
+              color: running
+                  ? cs.primary
+                  : cs.onSurfaceVariant.withValues(alpha: 0.7),
+              fontSize: 12,
+              fontWeight: running ? FontWeight.w600 : FontWeight.normal,
+              fontFeatures: const [FontFeature.tabularFigures()]),
+        ),
+        if (!running) ...[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => _confirmDelete(entry),
+            child: Icon(Icons.close_rounded,
+                size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+          ),
+        ],
+        const SizedBox(width: 6),
+      ],
+    );
+  }
+
+  // ---------------- 正计时视图 ----------------
 
   Widget _buildTagRow() {
     return SizedBox(
@@ -447,7 +560,7 @@ class _WorkPageState extends State<WorkPage>
             child: _buildAnimatedRing(color),
           ),
           if (paused) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -466,7 +579,7 @@ class _WorkPageState extends State<WorkPage>
               style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 15)),
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -485,7 +598,7 @@ class _WorkPageState extends State<WorkPage>
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -528,8 +641,8 @@ class _WorkPageState extends State<WorkPage>
         return Transform.scale(
           scale: scale,
           child: Container(
-            width: 200,
-            height: 200,
+            width: 190,
+            height: 190,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
@@ -555,7 +668,7 @@ class _WorkPageState extends State<WorkPage>
                 return Text(
                   display,
                   style: const TextStyle(
-                    fontSize: 38,
+                    fontSize: 36,
                     fontWeight: FontWeight.w200,
                     fontFamily: 'monospace',
                     letterSpacing: 2,
@@ -574,18 +687,21 @@ class _WorkPageState extends State<WorkPage>
     final tag = _ctrl.currentTimerTag.value;
     final color = tag != null ? _parseColor(tag.color) : Colors.grey;
     final todayDuration = _ctrl.todayTagDuration;
+    final busy = _ctrl.isClockedIn.value;
 
     return Column(
       children: [
         const Spacer(flex: 3),
         GestureDetector(
-          onTap: () {
-            HapticFeedback.mediumImpact();
-            _ctrl.startTimer();
-          },
+          onTap: busy
+              ? null
+              : () {
+                  HapticFeedback.mediumImpact();
+                  _ctrl.startTimer();
+                },
           child: Container(
-            width: 160,
-            height: 160,
+            width: 150,
+            height: 150,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: color.withValues(alpha: 0.04),
@@ -602,11 +718,15 @@ class _WorkPageState extends State<WorkPage>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.play_arrow_rounded,
-                    size: 52, color: color.withValues(alpha: 0.7)),
+                Icon(
+                    busy
+                        ? Icons.punch_clock_outlined
+                        : Icons.play_arrow_rounded,
+                    size: 48,
+                    color: color.withValues(alpha: 0.7)),
                 const SizedBox(height: 2),
                 Text(
-                  '开始',
+                  busy ? '打卡中' : '开始',
                   style: TextStyle(
                     color: color.withValues(alpha: 0.5),
                     fontSize: 14,
@@ -618,7 +738,7 @@ class _WorkPageState extends State<WorkPage>
           ),
         ),
         if (tag != null && todayDuration > Duration.zero) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Text(
             '今日${tag.name}: ${DateHelper.formatDuration(todayDuration)}',
             style: TextStyle(
@@ -627,93 +747,58 @@ class _WorkPageState extends State<WorkPage>
           ),
         ],
         const Spacer(flex: 3),
-        _buildTodaySessions(),
       ],
     );
   }
 
-  Widget _buildTodaySessions() {
-    final cs = Theme.of(context).colorScheme;
-    final todayEntries = _ctrl.entries
-        .where((e) => DateHelper.isSameDay(e.startTime, DateTime.now()))
-        .toList();
+  // ---------------- 打卡视图 ----------------
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text('今日记录',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1,
-                )),
-          ),
-          if (todayEntries.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Center(
-                  child: Text('暂无记录',
-                      style: TextStyle(
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-                          fontSize: 12))),
-            ),
-          ...todayEntries.map(_buildSessionItem),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
+  Widget _bigClock() {
+    return FlipClock(time: _now);
   }
 
-  Widget _buildSessionItem(WorkEntry entry) {
-    final cs = Theme.of(context).colorScheme;
-    final tag = _ctrl.tags.cast<TimerTag?>().firstWhere(
-          (t) => t?.name == entry.projectName,
-          orElse: () => null,
-        );
-    final color = tag != null ? _parseColor(tag.color) : Colors.grey;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+  Widget _clockButton({
+    required String label,
+    required VoidCallback onTap,
+    bool isStop = false,
+  }) {
+    final color = isStop ? const Color(0xFFEF5350) : const Color(0xFF4CAF50);
+    final gradient = isStop
+        ? const [Color(0xFFE53935), Color(0xFFC62828)]
+        : const [Color(0xFF43A047), Color(0xFF2E7D32)];
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 78,
+        height: 78,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradient,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Row(
-              children: [
-                Text(entry.projectName.isNotEmpty ? entry.projectName : '未命名',
-                    style: const TextStyle(fontSize: 13)),
-                if (tag != null && tag.isWork)
-                  const Icon(Icons.star_rounded, size: 12, color: Colors.amber),
-              ],
-            ),
-          ),
-          if (entry.duration != null)
-            Text(DateHelper.formatDuration(entry.duration!),
-                style: TextStyle(
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                    fontSize: 12)),
-          if (entry.endTime != null) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _confirmDelete(entry),
-              child: Icon(Icons.close_rounded,
-                  size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.35),
+              blurRadius: 18,
+              offset: const Offset(0, 5),
             ),
           ],
-        ],
+        ),
+        child: Center(
+          child: Text(label,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2)),
+        ),
       ),
     );
   }
+
+  // ---------------- 弹窗 ----------------
 
   void _confirmDelete(WorkEntry entry) {
     Get.dialog(AlertDialog(
@@ -852,6 +937,8 @@ class _WorkPageState extends State<WorkPage>
       ],
     ));
   }
+
+  // ---------------- 工具 ----------------
 
   Color _parseColor(String hex) {
     try {

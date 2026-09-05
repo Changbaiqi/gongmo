@@ -22,7 +22,6 @@ class WorkController extends GetxController {
   final currentTimerEntry = Rxn<WorkEntry>();
   final elapsedSeconds = 0.obs;
 
-  final isClockMode = false.obs;
   final isClockedIn = false.obs;
   final clockInTime = Rxn<DateTime>();
   final clockEntry = Rxn<WorkEntry>();
@@ -49,7 +48,7 @@ class WorkController extends GetxController {
   }
 
   void startTimer() {
-    if (isTimerRunning.value) return;
+    if (isTimerRunning.value || isClockedIn.value) return;
     final tag = _selectedTag;
     if (tag == null) return;
 
@@ -168,11 +167,14 @@ class WorkController extends GetxController {
       isTimerRunning.value = true;
       currentTimerEntry.value = active;
 
-      if (active.projectName == '打卡') {
-        isClockMode.value = true;
+      if (active.mode == 'clock') {
         isClockedIn.value = true;
         clockInTime.value = active.startTime;
         clockEntry.value = active;
+        try {
+          _selectedTag = tags.firstWhere((t) => t.name == active.projectName);
+          currentTimerTag.value = _selectedTag;
+        } catch (_) {}
         _startTick();
         return;
       }
@@ -194,21 +196,18 @@ class WorkController extends GetxController {
     }
   }
 
-  void toggleMode() {
-    if (isTimerRunning.value) return;
-    isClockMode.toggle();
-  }
-
   void clockIn() {
-    if (isClockedIn.value) return;
+    if (isClockedIn.value || isTimerRunning.value) return;
 
+    final tag = _selectedTag;
     final entry = WorkEntry(
       id: _uuid.v4(),
       startTime: DateTime.now(),
-      projectName: '打卡',
-      description: '上班打卡',
+      projectName: tag?.name ?? '打卡',
+      description: '打卡',
       hourlyRate: 0,
       status: WorkStatus.inProgress,
+      mode: 'clock',
     );
     _workRepo.save(entry);
 
@@ -229,7 +228,7 @@ class WorkController extends GetxController {
     final updated = entry.copyWith(
       endTime: endTime,
       status: WorkStatus.completed,
-      description: '下班打卡',
+      description: '结束打卡',
     );
     _workRepo.save(updated);
 
@@ -246,7 +245,7 @@ class WorkController extends GetxController {
 
   void _updateTodayClockDuration() {
     final today = _workRepo.getToday().where(
-        (e) => e.projectName == '打卡' && e.status == WorkStatus.completed);
+        (e) => e.mode == 'clock' && e.status == WorkStatus.completed);
     final dur = today.fold(
         Duration.zero, (sum, e) => sum + (e.duration ?? Duration.zero));
     todayClockDuration.value = dur;

@@ -19,6 +19,9 @@ class WorkEntry {
   /// 非空表示当前处于暂停状态，值为暂停时刻
   DateTime? pausedAt;
 
+  /// 会话模式：timer=正计时 clock=打卡（旧数据按名称推断）
+  String mode;
+
   WorkEntry({
     required this.id,
     required this.startTime,
@@ -33,6 +36,7 @@ class WorkEntry {
     DateTime? updatedAt,
     this.accumulatedSeconds = 0,
     this.pausedAt,
+    this.mode = 'timer',
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
@@ -53,13 +57,14 @@ class WorkEntry {
   }
 
   factory WorkEntry.fromJson(Map<String, dynamic> json) {
+    final name = json['projectName'] as String? ?? '';
     return WorkEntry(
       id: json['id'] as String,
       startTime: DateTime.parse(json['startTime'] as String),
       endTime: json['endTime'] != null
           ? DateTime.parse(json['endTime'] as String)
           : null,
-      projectName: json['projectName'] as String? ?? '',
+      projectName: name,
       description: json['description'] as String? ?? '',
       hourlyRate: (json['hourlyRate'] as num?)?.toDouble() ?? 0,
       income: (json['income'] as num?)?.toDouble(),
@@ -67,6 +72,11 @@ class WorkEntry {
       status: WorkStatus.values[json['status'] as int? ?? 0],
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      accumulatedSeconds: (json['accumulatedSeconds'] as num?)?.toInt() ?? 0,
+      pausedAt: json['pausedAt'] != null
+          ? DateTime.parse(json['pausedAt'] as String)
+          : null,
+      mode: json['mode'] as String? ?? (name == '打卡' ? 'clock' : 'timer'),
     );
   }
 
@@ -85,6 +95,7 @@ class WorkEntry {
       'updatedAt': updatedAt.toIso8601String(),
       'accumulatedSeconds': accumulatedSeconds,
       'pausedAt': pausedAt?.toIso8601String(),
+      'mode': mode,
     };
   }
 
@@ -100,6 +111,7 @@ class WorkEntry {
     int? accumulatedSeconds,
     DateTime? pausedAt,
     bool clearPausedAt = false,
+    String? mode,
   }) {
     return WorkEntry(
       id: id,
@@ -115,6 +127,7 @@ class WorkEntry {
       updatedAt: DateTime.now(),
       accumulatedSeconds: accumulatedSeconds ?? this.accumulatedSeconds,
       pausedAt: clearPausedAt ? null : (pausedAt ?? this.pausedAt),
+      mode: mode ?? this.mode,
     );
   }
 }

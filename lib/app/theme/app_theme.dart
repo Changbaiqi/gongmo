@@ -4,7 +4,12 @@ import 'package:flutter/material.dart';
 enum AppThemePreset {
   green('墨绿', [Color(0xFF2E7D32), Color(0xFF4CAF50)]),
   mono('黑白', [Color(0xFF212121), Color(0xFF9E9E9E)]),
-  tomato('番茄红', [Color(0xFFE53935), Color(0xFFFF8A65)]);
+  tomato('番茄红', [Color(0xFFE53935), Color(0xFFFF8A65)]),
+  ocean('海洋蓝', [Color(0xFF1565C0), Color(0xFF42A5F5)]),
+  teal('青碧', [Color(0xFF00897B), Color(0xFF4DB6AC)]),
+  sunset('落日橙', [Color(0xFFEF6C00), Color(0xFFFFB74D)]),
+  sakura('樱花粉', [Color(0xFFD81B60), Color(0xFFF48FB1)]),
+  grape('葡萄紫', [Color(0xFF7B1FA2), Color(0xFFBA68C8)]);
 
   final String label;
   final List<Color> swatches;
@@ -189,6 +194,31 @@ class AppTheme {
           seedColor: const Color(0xFF757575),
           brightness: brightness,
         );
+      case AppThemePreset.ocean:
+        return ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1565C0),
+          brightness: brightness,
+        );
+      case AppThemePreset.teal:
+        return ColorScheme.fromSeed(
+          seedColor: const Color(0xFF00897B),
+          brightness: brightness,
+        );
+      case AppThemePreset.sunset:
+        return ColorScheme.fromSeed(
+          seedColor: const Color(0xFFEF6C00),
+          brightness: brightness,
+        );
+      case AppThemePreset.sakura:
+        return ColorScheme.fromSeed(
+          seedColor: const Color(0xFFD81B60),
+          brightness: brightness,
+        );
+      case AppThemePreset.grape:
+        return ColorScheme.fromSeed(
+          seedColor: const Color(0xFF7B1FA2),
+          brightness: brightness,
+        );
     }
   }
 
@@ -201,6 +231,16 @@ class AppTheme {
         return const Color(0xFF1A1A1A);
       case AppThemePreset.tomato:
         return const Color(0xFF1E1514);
+      case AppThemePreset.ocean:
+        return const Color(0xFF14181D);
+      case AppThemePreset.teal:
+        return const Color(0xFF131918);
+      case AppThemePreset.sunset:
+        return const Color(0xFF1C1611);
+      case AppThemePreset.sakura:
+        return const Color(0xFF1C1418);
+      case AppThemePreset.grape:
+        return const Color(0xFF171319);
     }
   }
 
@@ -218,6 +258,16 @@ class AppTheme {
         return isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF7F7F7);
       case AppThemePreset.tomato:
         return isDark ? const Color(0xFF150F0E) : const Color(0xFFFAF5F4);
+      case AppThemePreset.ocean:
+        return isDark ? const Color(0xFF0D1114) : const Color(0xFFF4F6F8);
+      case AppThemePreset.teal:
+        return isDark ? const Color(0xFF0D1211) : const Color(0xFFF3F7F6);
+      case AppThemePreset.sunset:
+        return isDark ? const Color(0xFF13100C) : const Color(0xFFFAF6F0);
+      case AppThemePreset.sakura:
+        return isDark ? const Color(0xFF130E11) : const Color(0xFFFBF4F6);
+      case AppThemePreset.grape:
+        return isDark ? const Color(0xFF100D12) : const Color(0xFFF8F5F9);
     }
   }
 

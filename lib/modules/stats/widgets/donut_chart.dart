@@ -7,12 +7,19 @@ class DonutChart extends StatelessWidget {
   final double total;
   final String centerLabel;
 
+  /// 自定义数值格式化（默认人民币金额），用于时长等场景
+  final String Function(double amount)? formatAmount;
+
   const DonutChart({
     super.key,
     required this.slices,
     required this.total,
     this.centerLabel = '总支出',
+    this.formatAmount,
   });
+
+  String _fmt(double v) =>
+      formatAmount?.call(v) ?? '¥${_formatAmount(v)}';
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +45,7 @@ class DonutChart extends StatelessWidget {
                           color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
                   const SizedBox(height: 2),
                   Text(
-                    '¥${_formatAmount(total)}',
+                    _fmt(total),
                     style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
@@ -70,7 +77,7 @@ class DonutChart extends StatelessWidget {
                       overflow: TextOverflow.ellipsis),
                 ),
                 Text(
-                  '¥${_formatAmount(s.amount)}  ${pct.toStringAsFixed(1)}%',
+                  '${_fmt(s.amount)}  ${pct.toStringAsFixed(1)}%',
                   style: TextStyle(
                       fontSize: 12,
                       color: cs.onSurfaceVariant,
@@ -84,7 +91,7 @@ class DonutChart extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(
-              '其余 ${slices.length - 6} 个分类合计 ¥${_formatAmount(_restAmount())}',
+              '其余 ${slices.length - 6} 个分类合计 ${_fmt(_restAmount())}',
               style: TextStyle(
                   fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
             ),

@@ -161,14 +161,16 @@ class SettingsPage extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         color: cs.onSurface)),
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    for (final p in AppThemePreset.values) ...[
-                      Expanded(child: _presetTile(context, tc, p)),
-                      if (p != AppThemePreset.values.last)
-                        const SizedBox(width: 8),
-                    ],
-                  ],
+                SizedBox(
+                  height: 68,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.zero,
+                    itemCount: AppThemePreset.values.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) =>
+                        _presetTile(context, tc, AppThemePreset.values[index]),
+                  ),
                 ),
                 const SizedBox(height: 18),
                 Text('自定义背景',
@@ -278,28 +280,30 @@ class SettingsPage extends StatelessWidget {
       onTap: () => tc.setPreset(preset),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
+        width: 96,
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: selected
               ? cs.primary.withValues(alpha: 0.1)
-              : Colors.transparent,
+              : cs.surfaceContainerHighest.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected
                 ? cs.primary
-                : cs.outlineVariant.withValues(alpha: 0.6),
+                : cs.outlineVariant.withValues(alpha: 0.5),
             width: selected ? 1.5 : 1,
           ),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 for (final c in preset.swatches) ...[
                   Container(
-                    width: 15,
-                    height: 15,
+                    width: 14,
+                    height: 14,
                     decoration: BoxDecoration(
                       color: c,
                       shape: BoxShape.circle,
@@ -315,7 +319,7 @@ class SettingsPage extends StatelessWidget {
             const SizedBox(height: 7),
             Text(preset.label,
                 style: TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 12,
                   color: selected
                       ? cs.primary
                       : cs.onSurfaceVariant.withValues(alpha: 0.8),

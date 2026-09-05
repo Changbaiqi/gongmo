@@ -453,7 +453,7 @@ class _HomePageState extends State<HomePage> {
 
   /// 横幅"停止"按钮：二次确认后结束打卡或计时
   void _confirmStopActiveTimer(WorkEntry entry) {
-    final isClock = entry.projectName == '打卡';
+    final isClock = entry.mode == 'clock';
     Get.dialog(
       AlertDialog(
         title: Text(isClock ? '结束打卡' : '结束计时'),
