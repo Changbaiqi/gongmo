@@ -157,13 +157,18 @@ class _FlipDigitState extends State<FlipDigit>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(5),
-        child: AnimatedBuilder(
+          child: AnimatedBuilder(
           animation: _ctrl,
           builder: (context, _) {
             final t = _ctrl.value;
-            final animating = t > 0 && t < 1;
-            final p1 = (t * 2).clamp(0.0, 1.0);
-            final p2 = ((t - 0.5) * 2).clamp(0.0, 1.0);
+            // 注意：不能用 t>0 判断翻转中——动画第一帧 t 恰为 0，
+            // 会被当成静止态而整面显示新数字，造成"闪一下"的观感。
+            // 只要新旧值不同且动画未结束，就处于翻转态。
+            final animating = _old.isNotEmpty && _old != _current && t < 1.0;
+            final p1 =
+                Curves.easeIn.transform((t * 2).clamp(0.0, 1.0));
+            final p2 = Curves.easeOut
+                .transform(((t - 0.5) * 2).clamp(0.0, 1.0));
 
             return SizedBox(
               width: w,

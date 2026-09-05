@@ -7,6 +7,7 @@ import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
 import '../../core/utils/icon_utils.dart';
 import '../../data/models/finance_entry.dart';
+import '../../data/services/github_sync_service.dart';
 import 'settings_controller.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -376,6 +377,7 @@ class SettingsPage extends StatelessWidget {
               decoration: const InputDecoration(
                 labelText: 'Personal Access Token',
                 hintText: 'ghp_xxxx',
+                helperText: '需要 Contents 读写权限',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -397,9 +399,16 @@ class SettingsPage extends StatelessWidget {
                 child: const Text('取消'),
               ),
               ElevatedButton(
-                onPressed: () {
-                  ctrl.setGithubRepo(urlCtrl.text);
-                  ctrl.setGithubToken(tokenCtrl.text);
+                onPressed: () async {
+                  final url = urlCtrl.text.trim();
+                  final token = tokenCtrl.text.trim();
+                  if (url.isNotEmpty &&
+                      GithubSyncService.normalizeRepo(url) == null) {
+                    Get.snackbar('格式错误', '仓库地址不正确，示例：https://github.com/user/repo');
+                    return;
+                  }
+                  await ctrl.setGithubRepo(url);
+                  await ctrl.setGithubToken(token);
                   Get.back();
                   Get.snackbar('已保存', 'GitHub 配置已更新');
                 },

@@ -1,6 +1,6 @@
-{
-    "name": "gongmo",
-    "short_name": "gongmo",
+﻿{
+    "name": "工墨",
+    "short_name": "工墨",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

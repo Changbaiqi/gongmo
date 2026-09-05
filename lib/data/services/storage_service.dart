@@ -222,6 +222,27 @@ class StorageService {
       'financeEntries': _financeEntries.map((e) => e.toJson()).toList(),
       'categories': _categories.map((e) => e.toJson()).toList(),
       'accounts': _accounts.map((e) => e.toJson()).toList(),
+      'timerTags': _timerTags.map((e) => e.toJson()).toList(),
     };
+  }
+
+  /// 用备份数据整体覆盖本地数据（空列表保留本地默认值）
+  Future<void> restoreAllData({
+    required List<WorkEntry> workEntries,
+    required List<FinanceEntry> financeEntries,
+    required List<Category> categories,
+    required List<Account> accounts,
+    required List<TimerTag> timerTags,
+  }) async {
+    _workEntries = workEntries;
+    _financeEntries = financeEntries;
+    if (categories.isNotEmpty) _categories = categories;
+    if (accounts.isNotEmpty) _accounts = accounts;
+    if (timerTags.isNotEmpty) _timerTags = timerTags;
+    await saveWorkEntries();
+    await saveFinanceEntries();
+    await saveCategories();
+    await saveAccounts();
+    await saveTimerTags();
   }
 }
