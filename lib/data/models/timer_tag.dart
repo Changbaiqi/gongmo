@@ -3,9 +3,20 @@ class TimerTag {
   String name;
   String icon;
   String color;
+
+  /// 是否工作标签（与 incomeType 联动：incomeType != none）
   bool isWork;
+
+  /// 收入模式：none=普通标签 hourly=时薪 manual=自统计 fixed=固定薪资
+  String incomeType;
   double hourlyRate;
+  double fixedSalary;
   int sortOrder;
+
+  static const incomeNone = 'none';
+  static const incomeHourly = 'hourly';
+  static const incomeManual = 'manual';
+  static const incomeFixed = 'fixed';
 
   TimerTag({
     required this.id,
@@ -13,18 +24,24 @@ class TimerTag {
     this.icon = 'timer',
     this.color = '#2196F3',
     this.isWork = false,
+    this.incomeType = incomeNone,
     this.hourlyRate = 0,
+    this.fixedSalary = 0,
     this.sortOrder = 0,
   });
 
   factory TimerTag.fromJson(Map<String, dynamic> json) {
+    final isWork = json['isWork'] as bool? ?? false;
     return TimerTag(
       id: json['id'] as String,
       name: json['name'] as String,
       icon: json['icon'] as String? ?? 'timer',
       color: json['color'] as String? ?? '#2196F3',
-      isWork: json['isWork'] as bool? ?? false,
+      isWork: isWork,
+      incomeType: json['incomeType'] as String? ??
+          (isWork ? incomeHourly : incomeNone),
       hourlyRate: (json['hourlyRate'] as num?)?.toDouble() ?? 0,
+      fixedSalary: (json['fixedSalary'] as num?)?.toDouble() ?? 0,
       sortOrder: json['sortOrder'] as int? ?? 0,
     );
   }
@@ -36,7 +53,9 @@ class TimerTag {
       'icon': icon,
       'color': color,
       'isWork': isWork,
+      'incomeType': incomeType,
       'hourlyRate': hourlyRate,
+      'fixedSalary': fixedSalary,
       'sortOrder': sortOrder,
     };
   }
@@ -49,6 +68,7 @@ class TimerTag {
           icon: 'work',
           color: '#4CAF50',
           isWork: true,
+          incomeType: incomeHourly,
           hourlyRate: 150,
           sortOrder: 1),
       TimerTag(

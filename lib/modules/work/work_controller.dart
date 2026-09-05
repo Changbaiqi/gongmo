@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/utils/date_utils.dart';
 import '../../data/repositories/work_repository.dart';
 import '../../data/repositories/finance_repository.dart';
 import '../../data/services/storage_service.dart';
@@ -8,6 +9,7 @@ import '../../data/models/work_entry.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/models/timer_tag.dart';
 import '../dashboard/dashboard_controller.dart';
+import '../finance/finance_controller.dart';
 
 class WorkController extends GetxController {
   final WorkRepository _workRepo = WorkRepository();
@@ -78,10 +80,13 @@ class WorkController extends GetxController {
     final endTime = DateTime.now();
     final duration = entry.liveElapsed;
     final hours = duration.inSeconds / 3600.0;
+    final incomeType = tag?.incomeType ?? TimerTag.incomeNone;
 
     double? income;
-    if (tag != null && tag.isWork && tag.hourlyRate > 0) {
+    if (incomeType == TimerTag.incomeHourly && tag!.hourlyRate > 0) {
       income = hours * tag.hourlyRate;
+    } else if (incomeType == TimerTag.incomeFixed && tag!.fixedSalary > 0) {
+      income = tag.fixedSalary;
     }
 
     final updated = entry.copyWith(
@@ -93,16 +98,7 @@ class WorkController extends GetxController {
     _workRepo.save(updated);
 
     if (income != null && income > 0) {
-      final financeEntry = FinanceEntry(
-        id: _uuid.v4(),
-        type: FinanceType.income,
-        amount: income,
-        categoryId: 'inc_1',
-        description: '工作计时: ${tag?.name ?? "工时"}',
-        workEntryId: entry.id,
-        date: DateTime.now(),
-      );
-      _financeRepo.save(financeEntry);
+      _saveIncome(income, tag?.name ?? '工时', entry.id);
     }
 
     _timer?.cancel();
@@ -113,6 +109,77 @@ class WorkController extends GetxController {
     elapsedSeconds.value = 0;
     loadEntries();
     _refreshDashboard();
+    _refreshFinance();
+
+    // 自统计：计时结束后弹窗录入本次所得
+    if (incomeType == TimerTag.incomeManual && tag != null) {
+      _promptManualIncome(updated, tag);
+    }
+  }
+
+  void _saveIncome(double amount, String tagName, String workEntryId) {
+    _financeRepo.save(FinanceEntry(
+      id: _uuid.v4(),
+      type: FinanceType.income,
+      amount: amount,
+      categoryId: 'inc_1',
+      description: '工作计时: $tagName',
+      workEntryId: workEntryId,
+      date: DateTime.now(),
+    ));
+  }
+
+  /// 自统计标签：结束后由用户手动输入这段时间的所得
+  void _promptManualIncome(WorkEntry entry, TimerTag tag) {
+    final amountCtrl = TextEditingController();
+    Get.dialog(
+      AlertDialog(
+        title: const Text('自统计收入'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '「${tag.name}」本次计时 ${DateHelper.formatDuration(entry.duration ?? Duration.zero)}，请输入这段时间的所得金额：',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amountCtrl,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: '本次所得 (¥)',
+                prefixText: '¥ ',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('跳过'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final amount = double.tryParse(amountCtrl.text);
+              if (amount == null || amount <= 0) {
+                Get.snackbar('提示', '请输入有效金额');
+                return;
+              }
+              _workRepo.save(entry.copyWith(income: amount));
+              _saveIncome(amount, tag.name, entry.id);
+              _refreshFinance();
+              _refreshDashboard();
+              Get.back();
+              Get.snackbar('已记录', '本次所得 ¥${amount.toStringAsFixed(2)}');
+            },
+            child: const Text('记录'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 暂停计时：冻结显示，累计已计时长并持久化
