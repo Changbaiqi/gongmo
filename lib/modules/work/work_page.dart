@@ -303,10 +303,10 @@ class _WorkPageState extends State<WorkPage>
 
   Widget _buildTagRow() {
     return SizedBox(
-      height: 40,
+      height: 44,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         children: [
           ..._ctrl.tags.map((tag) =>
               _buildTagChip(tag, _ctrl.currentTimerTag.value?.id == tag.id)),
@@ -318,6 +318,7 @@ class _WorkPageState extends State<WorkPage>
   }
 
   Widget _buildTagChip(TimerTag tag, bool isSelected) {
+    final cs = Theme.of(context).colorScheme;
     final color = _parseColor(tag.color);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -326,14 +327,28 @@ class _WorkPageState extends State<WorkPage>
         onLongPress: () => _showEditTagDialog(tag),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
+          height: 36,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: isSelected ? color : Colors.transparent,
-            borderRadius: BorderRadius.circular(19),
+            color: isSelected
+                ? color
+                : cs.surfaceContainerHighest.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isSelected ? color : Colors.grey.shade300,
-              width: 1.5,
+              color: isSelected
+                  ? color
+                  : cs.outlineVariant.withValues(alpha: 0.4),
+              width: 1,
             ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
           alignment: Alignment.center,
           child: Row(
@@ -342,22 +357,25 @@ class _WorkPageState extends State<WorkPage>
               Icon(
                 _iconFor(tag.icon),
                 size: 15,
-                color: isSelected ? Colors.white : Colors.grey.shade600,
+                color: isSelected ? Colors.white : cs.onSurfaceVariant,
               ),
               const SizedBox(width: 4),
               Text(
                 tag.name,
                 style: TextStyle(
                   fontSize: 13,
-                  color: isSelected ? Colors.white : Colors.grey.shade700,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected ? Colors.white : cs.onSurface,
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
               ),
               if (tag.isWork)
                 Icon(
                   Icons.star_rounded,
                   size: 14,
-                  color: isSelected ? Colors.amber.shade200 : Colors.amber,
+                  color: isSelected
+                      ? Colors.amber.shade200
+                      : Colors.amber.shade700,
                 ),
             ],
           ),
@@ -367,17 +385,20 @@ class _WorkPageState extends State<WorkPage>
   }
 
   Widget _buildAddTagButton() {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: _showAddTagDialog,
       child: Container(
-        margin: const EdgeInsets.only(left: 2),
-        width: 40,
-        height: 40,
+        margin: const EdgeInsets.only(left: 4),
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.grey.shade300, width: 1.5),
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+          border:
+              Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
         ),
-        child: Icon(Icons.add, size: 18, color: Colors.grey.shade500),
+        child: Icon(Icons.add_rounded, size: 18, color: cs.onSurfaceVariant),
       ),
     );
   }

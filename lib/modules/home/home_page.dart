@@ -6,6 +6,7 @@ import '../../core/utils/icon_utils.dart';
 import '../../core/widgets/swipe_action_card.dart';
 import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
+import '../../data/models/work_entry.dart';
 import '../dashboard/dashboard_controller.dart';
 import '../dashboard/widgets/calendar_widget.dart';
 import '../work/work_controller.dart';
@@ -237,7 +238,7 @@ class _HomePageState extends State<HomePage> {
     return RefreshIndicator(
       onRefresh: () async => _dc.refreshData(),
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           _buildCalendar(),
           const SizedBox(height: 12),
@@ -434,11 +435,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             TextButton(
-              onPressed: () {
-                final wc = Get.find<WorkController>();
-                wc.stopTimer();
-                _dc.refreshData();
-              },
+              onPressed: () => _confirmStopActiveTimer(entry),
               style: TextButton.styleFrom(
                 foregroundColor: cs.error,
                 padding:
@@ -452,6 +449,38 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     });
+  }
+
+  /// 横幅"停止"按钮：二次确认后结束打卡或计时
+  void _confirmStopActiveTimer(WorkEntry entry) {
+    final isClock = entry.projectName == '打卡';
+    Get.dialog(
+      AlertDialog(
+        title: Text(isClock ? '结束打卡' : '结束计时'),
+        content: Text(isClock
+            ? '确定结束本次打卡吗？结束后将记录工时。'
+            : '确定结束「${entry.projectName}」的本次计时吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Get.back();
+              final wc = Get.find<WorkController>();
+              if (isClock) {
+                wc.clockOut();
+              } else {
+                wc.stopTimer();
+              }
+              _dc.refreshData();
+            },
+            child: const Text('确定结束', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCalendar() {

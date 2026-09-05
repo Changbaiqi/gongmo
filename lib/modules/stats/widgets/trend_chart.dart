@@ -21,15 +21,18 @@ class TrendChart extends StatefulWidget {
 
 class _TrendChartState extends State<TrendChart> {
   static const _hPad = 8.0;
-  int? _selected;
+
+  /// 选中的柱形：桶下标 + 是否为收入柱（左半区=收入，右半区=支出）
+  int? _selIdx;
+  bool _selIncome = true;
 
   @override
   void didUpdateWidget(covariant TrendChart oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.buckets != widget.buckets) {
-      _selected = null;
-    } else if (_selected != null && _selected! >= widget.buckets.length) {
-      _selected = null;
+      _selIdx = null;
+    } else if (_selIdx != null && _selIdx! >= widget.buckets.length) {
+      _selIdx = null;
     }
   }
 
@@ -46,11 +49,20 @@ class _TrendChartState extends State<TrendChart> {
               final n = widget.buckets.length;
               if (n == 0) return;
               final bw = (constraints.maxWidth - _hPad * 2) / n;
-              final idx =
-                  ((details.localPosition.dx - _hPad) / bw).floor();
+              final dx = details.localPosition.dx - _hPad;
+              var idx = (dx / bw).floor();
               if (idx < 0 || idx >= n) return;
+              // 每个桶左半边为收入柱、右半边为支出柱的点击区
+              final isIncome = dx < (idx + 0.5) * bw;
               HapticFeedback.selectionClick();
-              setState(() => _selected = _selected == idx ? null : idx);
+              setState(() {
+                if (_selIdx == idx && _selIncome == isIncome) {
+                  _selIdx = null;
+                } else {
+                  _selIdx = idx;
+                  _selIncome = isIncome;
+                }
+              });
             },
             child: CustomPaint(
               painter: _TrendPainter(
@@ -59,7 +71,8 @@ class _TrendChartState extends State<TrendChart> {
                 expenseColor: widget.expenseColor,
                 labelColor: Theme.of(context).colorScheme.onSurfaceVariant,
                 axisColor: Theme.of(context).colorScheme.outlineVariant,
-                selectedIndex: _selected,
+                selectedIndex: _selIdx,
+                selectedIncome: _selIncome,
               ),
             ),
           );
@@ -76,6 +89,7 @@ class _TrendPainter extends CustomPainter {
   final Color labelColor;
   final Color axisColor;
   final int? selectedIndex;
+  final bool selectedIncome;
 
   _TrendPainter({
     required this.buckets,
@@ -84,6 +98,7 @@ class _TrendPainter extends CustomPainter {
     required this.labelColor,
     required this.axisColor,
     this.selectedIndex,
+    this.selectedIncome = true,
   });
 
   @override
@@ -91,7 +106,7 @@ class _TrendPainter extends CustomPainter {
     if (buckets.isEmpty) return;
     const topPad = 22.0;
     const bottomPad = 26.0;
-    const hPad = _hPadPadding;
+    final hPad = _hPadPadding;
     final plotW = size.width - hPad * 2;
     final plotH = size.height - topPad - bottomPad;
     final bw = plotW / buckets.length;
@@ -113,12 +128,10 @@ class _TrendPainter extends CustomPainter {
       axisPaint,
     );
 
-    final hasSelection = selectedIndex != null && selectedIndex! >= 0;
     final normalBarW = math.max(2.5, math.min(16.0, bw * 0.3));
     const gap = 3.0;
 
     final stride = (buckets.length / 8).ceil();
-
     final labelIdx = <int>[
       for (var i = 0; i < buckets.length; i++)
         if (i % stride == 0) i,
@@ -138,40 +151,39 @@ class _TrendPainter extends CustomPainter {
     for (var i = 0; i < buckets.length; i++) {
       final b = buckets[i];
       final cx = hPad + bw * i + bw / 2;
-      final isSel = i == selectedIndex;
-      final barW = isSel
-          ? math.min(normalBarW * 1.6, bw * 0.42)
+      final isSelBucket = i == selectedIndex;
+      final x0 = cx - (normalBarW * 2 + gap) / 2;
+
+      // 选中柱加粗：以原柱中心为轴向两侧加宽，另一根柱保持原样
+      final incomeW = isSelBucket && selectedIncome
+          ? math.min(normalBarW * 1.8, bw * 0.46)
           : normalBarW;
-      final groupW = barW * 2 + gap;
-      final x0 = cx - groupW / 2;
-      final alpha = hasSelection && !isSel ? 0.4 : 1.0;
+      final expenseW = isSelBucket && !selectedIncome
+          ? math.min(normalBarW * 1.8, bw * 0.46)
+          : normalBarW;
+      final incomeGrow = incomeW - normalBarW;
+      final expenseGrow = expenseW - normalBarW;
+      final incomeX = x0 - incomeGrow / 2;
+      final expenseX = x0 + normalBarW + gap - expenseGrow / 2;
 
-      final incomeTop = _drawBar(canvas, x0, barW, b.income, maxV, topPad,
-          plotH, incomeColor.withValues(alpha: alpha));
-      final expenseTop = _drawBar(canvas, x0 + barW + gap, barW, b.expense,
-          maxV, topPad, plotH, expenseColor.withValues(alpha: alpha));
+      final incomeTop = _drawBar(canvas, incomeX, incomeW, b.income, maxV,
+          topPad, plotH, incomeColor);
+      final expenseTop = _drawBar(canvas, expenseX, expenseW, b.expense,
+          maxV, topPad, plotH, expenseColor);
 
-      if (isSel) {
-        if (b.income > 0) {
-          _drawAmount(canvas, _fmt(b.income),
-              x0 + barW / 2, incomeTop, incomeColor, size.width);
-        }
-        if (b.expense > 0) {
-          _drawAmount(canvas, _fmt(b.expense),
-              x0 + barW + gap + barW / 2, expenseTop, expenseColor,
-              size.width);
-        }
+      if (isSelBucket) {
+        final value = selectedIncome ? b.income : b.expense;
+        final color = selectedIncome ? incomeColor : expenseColor;
+        final barTop = selectedIncome ? incomeTop : expenseTop;
+        final barCx = selectedIncome
+            ? incomeX + incomeW / 2
+            : expenseX + expenseW / 2;
+        _drawAmount(
+            canvas, _fmt(value), barCx, barTop, color, size.width);
       }
 
-      final showLabel = labelIdx.contains(i);
-      if (showLabel || isSel) {
-        _drawAxisLabel(
-          canvas,
-          b.label,
-          cx,
-          topPad + plotH + 8,
-          bold: isSel,
-        );
+      if (labelIdx.contains(i) || isSelBucket) {
+        _drawAxisLabel(canvas, b.label, cx, topPad + plotH + 8, bold: isSelBucket);
       }
     }
   }
@@ -234,7 +246,8 @@ class _TrendPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _TrendPainter oldDelegate) =>
       oldDelegate.buckets != buckets ||
-      oldDelegate.selectedIndex != selectedIndex;
+      oldDelegate.selectedIndex != selectedIndex ||
+      oldDelegate.selectedIncome != selectedIncome;
 }
 
 const _hPadPadding = 8.0;
