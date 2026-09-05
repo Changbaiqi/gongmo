@@ -1013,7 +1013,6 @@ class _WorkPageState extends State<WorkPage> {
           },
           child: const Text('删除', style: TextStyle(color: Colors.red)),
         ),
-        const Spacer(),
         TextButton(onPressed: () => Get.back(), child: const Text('取消')),
         ElevatedButton(
           onPressed: () {
