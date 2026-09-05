@@ -102,6 +102,32 @@ class FinanceController extends GetxController {
     return cat.id;
   }
 
+  /// 修改分类（名称/图标/颜色）
+  void updateCategory({
+    required String id,
+    required String name,
+    required String icon,
+    required Color color,
+  }) {
+    for (final cat in _storage.categories) {
+      if (cat.id == id) {
+        cat.name = name;
+        cat.icon = icon;
+        cat.color =
+            '#${(color.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}'.toUpperCase();
+        _storage.updateCategory(cat);
+        categoriesRevision.value++;
+        return;
+      }
+    }
+  }
+
+  /// 删除分类
+  void deleteCategory(String id) {
+    _storage.removeCategory(id);
+    categoriesRevision.value++;
+  }
+
   String getCategoryIcon(String categoryId) {
     try {
       return categories.firstWhere((c) => c.id == categoryId).icon;

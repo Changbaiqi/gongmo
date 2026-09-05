@@ -840,9 +840,11 @@ class _HomePageState extends State<HomePage> {
       final type = isExpense.value ? FinanceType.expense : FinanceType.income;
       final activeCats =
           fc.categories.where((c) => c.type == type).toList();
-      if (selectedCatId.value.isEmpty) {
+      if (selectedCatId.value.isEmpty && activeCats.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          selectedCatId.value = activeCats.first.id;
+          if (selectedCatId.value.isEmpty) {
+            selectedCatId.value = activeCats.first.id;
+          }
         });
       }
       return GridView.count(
@@ -900,11 +902,11 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  /// “新增分类”网格入口
-  Widget _addCategoryTile(FinanceController fc, ColorScheme cs, bool isExpense,
-      RxString selectedCatId) {
+  /// “分类管理”网格入口（置于最前）
+  Widget _categoryManageTile(FinanceController fc, ColorScheme cs,
+      bool isExpense, RxString selectedCatId) {
     return GestureDetector(
-      onTap: () => _showAddCategoryDialog(
+      onTap: () => _showCategoryManagerDialog(
           fc: fc, isExpense: isExpense, selectedCatId: selectedCatId),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -917,12 +919,244 @@ class _HomePageState extends State<HomePage> {
               border: Border.all(color: cs.outlineVariant, width: 1.4),
             ),
             child:
-                Icon(Icons.add_rounded, size: 20, color: cs.onSurfaceVariant),
+                Icon(Icons.tune_rounded, size: 20, color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 5),
-          Text('新增分类',
+          Text('分类管理',
               style:
                   TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  /// 分类管理弹窗：新增 / 修改 / 删除
+  void _showCategoryManagerDialog({
+    required FinanceController fc,
+    required bool isExpense,
+    required RxString selectedCatId,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    Get.dialog(
+      AlertDialog(
+        title: Text(isExpense ? '支出分类管理' : '收入分类管理'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Obx(() {
+            fc.categoriesRevision.value;
+            final type =
+                isExpense.value ? FinanceType.expense : FinanceType.income;
+            final cats =
+                fc.categories.where((c) => c.type == type).toList();
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('共 ${cats.length} 个分类，点击条目可修改',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 300,
+                  child: cats.isEmpty
+                      ? Center(
+                          child: Text('暂无分类，点击下方按钮添加',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.6))),
+                        )
+                      : ListView.builder(
+                          itemCount: cats.length,
+                          itemExtent: 52,
+                          itemBuilder: (context, index) {
+                            final cat = cats[index];
+                            final color =
+                                IconUtils.hex(cat.color, cs.primary);
+                            final canDelete = cats.length > 1;
+                            return ListTile(
+                              key: ValueKey(cat.id),
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.13),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  IconUtils.category(cat.icon),
+                                  size: 17,
+                                  color: color,
+                                ),
+                              ),
+                              title: Text(cat.name,
+                                  style: const TextStyle(fontSize: 14)),
+                              trailing: IconButton(
+                                icon: Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 20,
+                                  color: canDelete
+                                      ? cs.onSurfaceVariant
+                                          .withValues(alpha: 0.7)
+                                      : cs.outlineVariant,
+                                ),
+                                onPressed: canDelete
+                                    ? () {
+                                        HapticFeedback.selectionClick();
+                                        if (selectedCatId.value == cat.id) {
+                                          selectedCatId.value = '';
+                                        }
+                                        fc.deleteCategory(cat.id);
+                                      }
+                                    : () => Get.snackbar(
+                                        '提示', '至少保留一个分类'),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showAddCategoryDialog(
+                        fc: fc,
+                        isExpense: isExpense,
+                        selectedCatId: selectedCatId),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('添加分类'),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('完成'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 编辑分类：名称 / 图标 / 颜色
+  void _showEditCategoryDialog({
+    required FinanceController fc,
+    required Category cat,
+    required bool isExpense,
+    required RxString selectedCatId,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final nameCtrl = TextEditingController(text: cat.name);
+    final selectedIcon = cat.icon.obs;
+    final selectedColor = Rxn<Color>(IconUtils.hex(cat.color));
+
+    Get.dialog(
+      AlertDialog(
+        title: const Text('编辑分类'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '分类名称',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _labeledDivider('分类图标', cs),
+                Obx(() => GridView.count(
+                      crossAxisCount: 4,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      childAspectRatio: 1,
+                      children: _categoryIconKeys.map((key) {
+                        final selected = selectedIcon.value == key;
+                        return GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            selectedIcon.value = key;
+                          },
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? cs.primary
+                                    : cs.surfaceContainerHighest
+                                        .withValues(alpha: 0.5),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: selected
+                                      ? cs.primary
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                IconUtils.category(key),
+                                size: 20,
+                                color: selected
+                                    ? Colors.white
+                                    : cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    )),
+                const SizedBox(height: 10),
+                _labeledDivider('背景颜色', cs),
+                Obx(() => Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        _randomColorOption(cs, selectedColor),
+                        for (final c in _categoryColorPalette)
+                          _categoryColorOption(cs, selectedColor, c),
+                      ],
+                    )),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) {
+                Get.snackbar('提示', '请输入分类名称');
+                return;
+              }
+              final color =
+                  selectedColor.value ?? _randomPleasantColor();
+              fc.updateCategory(
+                id: cat.id,
+                name: name,
+                icon: selectedIcon.value,
+                color: color,
+              );
+              Get.back();
+              Get.snackbar('已修改', '分类「$name」已更新');
+            },
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
