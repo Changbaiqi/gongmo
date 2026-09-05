@@ -23,6 +23,26 @@ class SyncPage extends StatelessWidget {
           children: [
             _buildStatusCard(context, ctrl, cs, connected),
             const SizedBox(height: 12),
+            Card(
+              child: ListTile(
+                leading:
+                    Icon(Icons.autorenew_rounded, color: cs.primary),
+                title: const Text('自动同步'),
+                subtitle: Text(
+                  connected
+                      ? '数据变动后自动备份到 GitHub'
+                      : '需先绑定仓库并填写 Token',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+                trailing: Obx(() => Switch(
+                      value: ctrl.autoSync.value,
+                      onChanged: (v) => ctrl.setAutoSync(v),
+                    )),
+              ),
+            ),
+            const SizedBox(height: 12),
             _buildStatsCard(context, ctrl, cs),
             const SizedBox(height: 24),
             ElevatedButton.icon(

@@ -42,6 +42,17 @@ class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
     });
   }
 
+  /// 屏幕常亮开关（插件通道不可用时静默降级，不影响计时）
+  Future<void> _applyKeepAwake(bool on) async {
+    try {
+      if (on) {
+        await WakelockPlus.enable();
+      } else {
+        await WakelockPlus.disable();
+      }
+    } catch (_) {}
+  }
+
   void _toggleControls() {
     HapticFeedback.selectionClick();
     setState(() => _controlsVisible = !_controlsVisible);
@@ -55,7 +66,7 @@ class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
   @override
   void dispose() {
     _hideTimer?.cancel();
-    WakelockPlus.disable();
+    WakelockPlus.disable().catchError((_) {});
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -75,20 +86,25 @@ class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
           fit: StackFit.expand,
           children: [
             Center(
-              child: Obx(() {
-                final paused = _ctrl.isPaused.value;
-                return Opacity(
-                  opacity: paused ? 0.45 : 1,
-                  child: FlipClock.elapsed(
-                    elapsed: Duration(seconds: _ctrl.elapsedSeconds.value),
-                    digitWidth: 76,
-                    digitHeight: 108,
-                    fontSize: 66,
-                    cardColor: const Color(0xFF1C1C1E),
-                    textColor: Colors.white,
-                  ),
-                );
-              }),
+              // FittedBox：横屏旋转生效前的过渡帧按竖屏宽度布局时会溢出，
+              // 自适应缩放保证任何时刻都不溢出
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Obx(() {
+                  final paused = _ctrl.isPaused.value;
+                  return Opacity(
+                    opacity: paused ? 0.45 : 1,
+                    child:                     FlipClock.elapsed(
+                      elapsed: Duration(seconds: _ctrl.elapsedSeconds.value),
+                      digitWidth: 84,
+                      digitHeight: 122,
+                      fontSize: 72,
+                      cardColor: const Color(0xFF1C1C1E),
+                      textColor: Colors.white,
+                    ),
+                  );
+                }),
+              ),
             ),
             if (_controlsVisible) ...[
               Positioned(
@@ -204,11 +220,7 @@ class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
 
   void _toggleKeepAwake() {
     setState(() => _keepAwake = !_keepAwake);
-    if (_keepAwake) {
-      WakelockPlus.enable();
-    } else {
-      WakelockPlus.disable();
-    }
+    _applyKeepAwake(_keepAwake);
   }
 
   void _confirmStop() {

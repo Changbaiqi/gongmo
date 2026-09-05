@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -26,6 +27,11 @@ class SyncController extends GetxController {
   final workCount = 0.obs;
   final financeCount = 0.obs;
 
+  /// 自动同步开关（持久化到 config.json）
+  final autoSync = false.obs;
+  Timer? _autoSyncTimer;
+  int _lastSyncedHash = 0;
+
   /// 仓库是否已绑定（含 Token）
   bool get isConnected {
     final sc = Get.find<SettingsController>();
@@ -41,7 +47,44 @@ class SyncController extends GetxController {
   void onInit() {
     super.onInit();
     Get.put(SettingsController());
+    // 数据落盘 → 防抖后自动备份
+    _storage.onDataChanged = _onDataChanged;
+    autoSync.value = _storage.getConfig('auto_sync') == true;
     refreshStats();
+  }
+
+  void setAutoSync(bool v) {
+    autoSync.value = v;
+    _storage.setConfig('auto_sync', v);
+    if (v) _lastSyncedHash = 0; // 开启后允许下一次数据变动立即同步
+  }
+
+  void _onDataChanged() {
+    if (!autoSync.value) return;
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer(const Duration(seconds: 6), _runAutoSync);
+  }
+
+  Future<void> _runAutoSync() async {
+    if (!autoSync.value || isSyncing.value || isRestoring.value) return;
+    if (!isConnected) return;
+    final hash = _storage.exportAllData().hashCode;
+    if (hash == _lastSyncedHash) return; // 数据无变化
+    isSyncing.value = true;
+    try {
+      await _sync.pushBackup();
+      final now = DateTime.now();
+      await _sync.setLastSync(now);
+      lastSyncTime.value = now;
+      _lastSyncedHash = hash;
+      refreshStats();
+      Get.snackbar('自动同步', '数据已自动备份到 GitHub',
+          duration: const Duration(seconds: 2));
+    } catch (_) {
+      // 自动同步失败时静默，等待下次数据变动重试
+    } finally {
+      isSyncing.value = false;
+    }
   }
 
   void refreshStats() {
@@ -64,6 +107,7 @@ class SyncController extends GetxController {
       final now = DateTime.now();
       await _sync.setLastSync(now);
       lastSyncTime.value = now;
+      _lastSyncedHash = _storage.exportAllData().hashCode;
       refreshStats();
       Get.snackbar('同步完成', '已备份 ${totalEntries.value} 条记录到 GitHub');
     } on GithubSyncException catch (e) {

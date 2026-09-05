@@ -8,6 +8,7 @@ import 'app/routes/app_routes.dart';
 import 'app/theme/app_theme.dart';
 import 'app/theme/theme_controller.dart';
 import 'data/services/storage_service.dart';
+import 'modules/sync/sync_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,7 @@ void main() async {
   final storage = StorageService();
   await storage.init();
   Get.put(ThemeController());
+  Get.put(SyncController()); // 注册自动同步引擎
 
   runApp(const GongMoApp());
 }

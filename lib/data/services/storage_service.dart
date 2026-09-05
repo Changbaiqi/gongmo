@@ -23,6 +23,17 @@ class StorageService {
   List<TimerTag> _timerTags = [];
   Map<String, dynamic> _config = {};
 
+  /// 数据落盘后的回调（用于自动同步）；恢复数据过程中不触发
+  void Function()? onDataChanged;
+  bool _restoring = false;
+
+  void _notifyDataChanged() {
+    if (_restoring) return;
+    try {
+      onDataChanged?.call();
+    } catch (_) {}
+  }
+
   List<WorkEntry> get workEntries => _workEntries;
   List<FinanceEntry> get financeEntries => _financeEntries;
   List<Category> get categories => _categories;
@@ -189,22 +200,39 @@ class StorageService {
     await file.writeAsString(jsonStr);
   }
 
-  Future<void> saveWorkEntries() => _saveYearSplit<WorkEntry>(
-        _workPrefix,
-        _workEntries,
-        (e) => e.startTime.year,
-        (e) => e.toJson(),
-      );
+  Future<void> saveWorkEntries() async {
+    await _saveYearSplit<WorkEntry>(
+      _workPrefix,
+      _workEntries,
+      (e) => e.startTime.year,
+      (e) => e.toJson(),
+    );
+    _notifyDataChanged();
+  }
 
-  Future<void> saveFinanceEntries() => _saveYearSplit<FinanceEntry>(
-        _financePrefix,
-        _financeEntries,
-        (e) => e.date.year,
-        (e) => e.toJson(),
-      );
-  Future<void> saveCategories() => _saveList('categories.json', _categories);
-  Future<void> saveAccounts() => _saveList('accounts.json', _accounts);
-  Future<void> saveTimerTags() => _saveList('timer_tags.json', _timerTags);
+  Future<void> saveFinanceEntries() async {
+    await _saveYearSplit<FinanceEntry>(
+      _financePrefix,
+      _financeEntries,
+      (e) => e.date.year,
+      (e) => e.toJson(),
+    );
+    _notifyDataChanged();
+  }
+  Future<void> saveCategories() async {
+    await _saveList('categories.json', _categories);
+    _notifyDataChanged();
+  }
+
+  Future<void> saveAccounts() async {
+    await _saveList('accounts.json', _accounts);
+    _notifyDataChanged();
+  }
+
+  Future<void> saveTimerTags() async {
+    await _saveList('timer_tags.json', _timerTags);
+    _notifyDataChanged();
+  }
 
   void addWorkEntry(WorkEntry entry) {
     _workEntries.add(entry);
@@ -376,15 +404,20 @@ class StorageService {
     required List<Account> accounts,
     required List<TimerTag> timerTags,
   }) async {
-    _workEntries = workEntries;
-    _financeEntries = financeEntries;
-    if (categories.isNotEmpty) _categories = categories;
-    if (accounts.isNotEmpty) _accounts = accounts;
-    if (timerTags.isNotEmpty) _timerTags = timerTags;
-    await saveWorkEntries();
-    await saveFinanceEntries();
-    await saveCategories();
-    await saveAccounts();
-    await saveTimerTags();
+    _restoring = true; // 恢复过程触发的落盘不触发自动同步
+    try {
+      _workEntries = workEntries;
+      _financeEntries = financeEntries;
+      if (categories.isNotEmpty) _categories = categories;
+      if (accounts.isNotEmpty) _accounts = accounts;
+      if (timerTags.isNotEmpty) _timerTags = timerTags;
+      await saveWorkEntries();
+      await saveFinanceEntries();
+      await saveCategories();
+      await saveAccounts();
+      await saveTimerTags();
+    } finally {
+      _restoring = false;
+    }
   }
 }

@@ -710,9 +710,9 @@ class _WorkPageState extends State<WorkPage> {
                   opacity: _ctrl.isPaused.value ? 0.55 : 1,
                   child: FlipClock.elapsed(
                     elapsed: Duration(seconds: _ctrl.elapsedSeconds.value),
-                    digitWidth: 32,
-                    digitHeight: 48,
-                    fontSize: 26,
+                    digitWidth: 52,
+                    digitHeight: 76,
+                    fontSize: 42,
                   ),
                 )),
           ),

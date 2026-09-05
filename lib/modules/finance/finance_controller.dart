@@ -128,6 +128,31 @@ class FinanceController extends GetxController {
     categoriesRevision.value++;
   }
 
+  /// 调整同一收支类型内分类的先后顺序
+  void reorderCategory(FinanceType type, int oldIndex, int newIndex) {
+    final sameType =
+        _storage.categories.where((c) => c.type == type).toList();
+    if (oldIndex < 0 || oldIndex >= sameType.length) return;
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex < 0 || newIndex > sameType.length - 1) return;
+    final moved = sameType.removeAt(oldIndex);
+    sameType.insert(newIndex, moved);
+    for (var i = 0; i < sameType.length; i++) {
+      sameType[i].sortOrder = i + 1;
+    }
+    final others =
+        _storage.categories.where((c) => c.type != type).toList();
+    for (var i = 0; i < others.length; i++) {
+      others[i].sortOrder = i + 1;
+    }
+    _storage.categories
+      ..clear()
+      ..addAll(sameType)
+      ..addAll(others);
+    _storage.saveCategories();
+    categoriesRevision.value++;
+  }
+
   String getCategoryIcon(String categoryId) {
     try {
       return categories.firstWhere((c) => c.id == categoryId).icon;

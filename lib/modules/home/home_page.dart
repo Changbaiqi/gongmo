@@ -896,7 +896,6 @@ class _HomePageState extends State<HomePage> {
               ),
             );
           }),
-          _addCategoryTile(fc, cs, isExpense.value, selectedCatId),
         ],
       );
     });
@@ -945,14 +944,14 @@ class _HomePageState extends State<HomePage> {
           child: Obx(() {
             fc.categoriesRevision.value;
             final type =
-                isExpense.value ? FinanceType.expense : FinanceType.income;
+                isExpense ? FinanceType.expense : FinanceType.income;
             final cats =
                 fc.categories.where((c) => c.type == type).toList();
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('共 ${cats.length} 个分类，点击条目可修改',
+                Text('长按拖动调整先后顺序，点击条目可修改',
                     style: TextStyle(
                         fontSize: 11.5,
                         color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
@@ -967,9 +966,13 @@ class _HomePageState extends State<HomePage> {
                                   color: cs.onSurfaceVariant
                                       .withValues(alpha: 0.6))),
                         )
-                      : ListView.builder(
+                      : ReorderableListView.builder(
+                          shrinkWrap: true,
+                          buildDefaultDragHandles: false,
                           itemCount: cats.length,
                           itemExtent: 52,
+                          onReorder: (oldIndex, newIndex) =>
+                              fc.reorderCategory(type, oldIndex, newIndex),
                           itemBuilder: (context, index) {
                             final cat = cats[index];
                             final color =
@@ -979,18 +982,32 @@ class _HomePageState extends State<HomePage> {
                               key: ValueKey(cat.id),
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: Container(
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.13),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  IconUtils.category(cat.icon),
-                                  size: 17,
-                                  color: color,
-                                ),
+                              leading: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ReorderableDragStartListener(
+                                    index: index,
+                                    child: Icon(
+                                        Icons.drag_indicator_rounded,
+                                        size: 18,
+                                        color: cs.onSurfaceVariant
+                                            .withValues(alpha: 0.6)),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: color.withValues(alpha: 0.13),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      IconUtils.category(cat.icon),
+                                      size: 17,
+                                      color: color,
+                                    ),
+                                  ),
+                                ],
                               ),
                               title: Text(cat.name,
                                   style: const TextStyle(fontSize: 14)),
