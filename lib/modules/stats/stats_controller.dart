@@ -33,6 +33,7 @@ class StatsController extends GetxController {
   final entryCount = 0.obs;
   final trendBuckets = <TrendBucket>[].obs;
   final expenseSlices = <CategorySlice>[].obs;
+  final incomeSlices = <CategorySlice>[].obs;
 
   List<Category> get _categories => StorageService().categories;
 
@@ -153,7 +154,8 @@ class StatsController extends GetxController {
     entryCount.value = entries.length;
 
     _buildTrend(entries, start);
-    _buildExpenseSlices(entries);
+    _buildCategorySlices(entries, FinanceType.expense, expenseSlices);
+    _buildCategorySlices(entries, FinanceType.income, incomeSlices);
   }
 
   void _buildTrend(List<FinanceEntry> entries, DateTime start) {
@@ -212,10 +214,12 @@ class StatsController extends GetxController {
     trendBuckets.assignAll(buckets);
   }
 
-  void _buildExpenseSlices(List<FinanceEntry> entries) {
+  /// 按分类聚合指定收支类型的金额占比
+  void _buildCategorySlices(List<FinanceEntry> entries, FinanceType type,
+      RxList<CategorySlice> out) {
     final byId = <String, double>{};
     for (final e in entries) {
-      if (e.type == FinanceType.expense) {
+      if (e.type == type) {
         byId[e.categoryId] = (byId[e.categoryId] ?? 0) + e.amount;
       }
     }
@@ -243,9 +247,10 @@ class StatsController extends GetxController {
     if (unknownIds.isNotEmpty) {
       final unknownSum =
           unknownIds.fold(0.0, (s, id) => s + (byId[id] ?? 0));
-      slices.add(CategorySlice('未分类', const Color(0xFF9E9E9E), unknownSum));
+      slices.add(
+          CategorySlice('未分类', const Color(0xFF9E9E9E), unknownSum));
     }
     slices.sort((a, b) => b.amount.compareTo(a.amount));
-    expenseSlices.assignAll(slices);
+    out.assignAll(slices);
   }
 }

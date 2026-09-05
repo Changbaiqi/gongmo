@@ -8,6 +8,7 @@ import '../../core/widgets/flip_clock.dart';
 import '../../data/models/work_entry.dart';
 import '../../data/models/timer_tag.dart';
 import '../../data/services/storage_service.dart';
+import 'widgets/fullscreen_timer_page.dart';
 import 'widgets/work_stats_view.dart';
 import 'work_controller.dart';
 
@@ -18,9 +19,8 @@ class WorkPage extends StatefulWidget {
   State<WorkPage> createState() => _WorkPageState();
 }
 
-class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
+class _WorkPageState extends State<WorkPage> {
   final WorkController _ctrl = Get.put(WorkController());
-  late AnimationController _pulseCtrl;
 
   DateTime _now = DateTime.now();
   Timer? _clockTimer;
@@ -37,10 +37,6 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _pulseCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
@@ -49,7 +45,6 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
   @override
   void dispose() {
     _clockTimer?.cancel();
-    _pulseCtrl.dispose();
     _modePageCtrl.dispose();
     super.dispose();
   }
@@ -218,11 +213,29 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
     );
   }
 
-  /// 页 0：正计时（PageView 页面自身充满视口，不能用 Expanded）
+  /// 页 0：正计时（开始按钮 ↔ 翻牌计时牌 过渡切换）
   Widget _buildTimerPage() {
-    return Obx(() => _ctrl.isTimerRunning.value
-        ? _buildRunningView()
-        : _buildIdleView());
+    return Obx(() => AnimatedSwitcher(
+          duration: const Duration(milliseconds: 380),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.82, end: 1.0).animate(animation),
+              child: child,
+            ),
+          ),
+          child: _ctrl.isTimerRunning.value
+              ? KeyedSubtree(
+                  key: const ValueKey('running'),
+                  child: _buildRunningView(),
+                )
+              : KeyedSubtree(
+                  key: const ValueKey('idle'),
+                  child: _buildIdleView(),
+                ),
+        ));
   }
 
   /// 页 1：打卡
@@ -651,17 +664,13 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
   Widget _buildRunningView() {
     final tag = _ctrl.currentTimerTag.value;
     final color = tag != null ? _parseColor(tag.color) : Colors.grey;
+    final cs = Theme.of(context).colorScheme;
     final paused = _ctrl.isPaused.value;
-
-    if (paused) {
-      _pulseCtrl.stop();
-    } else {
-      _pulseCtrl.repeat(reverse: true);
-    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (tag != null)
             Container(
@@ -686,39 +695,56 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
                 ],
               ),
             ),
-          const Spacer(flex: 3),
-          Opacity(
-            opacity: paused ? 0.55 : 1,
-            child: _buildAnimatedRing(color),
+          const SizedBox(height: 16),
+          // 翻牌计时牌：点击进入横向全屏沉浸显示
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              Get.to(
+                () => const FullscreenTimerPage(),
+                transition: Transition.fadeIn,
+                duration: const Duration(milliseconds: 320),
+              );
+            },
+            child: Obx(() => Opacity(
+                  opacity: _ctrl.isPaused.value ? 0.55 : 1,
+                  child: FlipClock.elapsed(
+                    elapsed: Duration(seconds: _ctrl.elapsedSeconds.value),
+                    digitWidth: 32,
+                    digitHeight: 48,
+                    fontSize: 26,
+                  ),
+                )),
           ),
+          const SizedBox(height: 4),
+          Text('点击计时牌进入全屏',
+              style: TextStyle(
+                  fontSize: 10.5,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
           if (paused) ...[
             const SizedBox(height: 10),
             Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text('已暂停',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  style:
+                      TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             ),
           ],
-          const Spacer(flex: 3),
+          const SizedBox(height: 10),
           Text(DateHelper.formatTime(_now),
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 15)),
-          const SizedBox(height: 20),
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15)),
+          const SizedBox(height: 18),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _roundAction(
-                icon: paused
-                    ? Icons.play_arrow_rounded
-                    : Icons.pause_rounded,
+                icon:
+                    paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
                 color: const Color(0xFF43A047),
                 onTap: paused ? _ctrl.resumeTimer : _ctrl.pauseTimer,
               ),
@@ -730,7 +756,6 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
               ),
             ],
           ),
-          const SizedBox(height: 16),
         ],
       ),
     );
@@ -762,56 +787,6 @@ class _WorkPageState extends State<WorkPage> with TickerProviderStateMixin {
         ),
         child: Icon(icon, size: 30, color: Colors.white),
       ),
-    );
-  }
-
-  Widget _buildAnimatedRing(Color color) {
-    return AnimatedBuilder(
-      animation: _pulseCtrl,
-      builder: (context, _) {
-        final scale = 1.0 + _pulseCtrl.value * 0.05;
-        return Transform.scale(
-          scale: scale,
-          child: Container(
-            width: 190,
-            height: 190,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: color.withValues(alpha: 0.2 + _pulseCtrl.value * 0.15),
-                width: 5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.1),
-                  blurRadius: 20 + _pulseCtrl.value * 12,
-                ),
-              ],
-            ),
-            child: Center(
-              child: Obx(() {
-                final s = _ctrl.elapsedSeconds.value;
-                final h = s ~/ 3600;
-                final m = (s % 3600) ~/ 60;
-                final sec = s % 60;
-                final display = h > 0
-                    ? '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}'
-                    : '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-                return Text(
-                  display,
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w200,
-                    fontFamily: 'monospace',
-                    letterSpacing: 2,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
-                );
-              }),
-            ),
-          ),
-        );
-      },
     );
   }
 

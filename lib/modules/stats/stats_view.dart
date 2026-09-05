@@ -38,7 +38,11 @@ class _StatsViewState extends State<StatsView> {
               const SizedBox(height: 12),
               _buildTrendCard(cs),
               const SizedBox(height: 12),
-              _buildCategoryCard(cs),
+              _buildCategoryCard(cs, '支出构成', _ctrl.expenseSlices.toList(),
+                  _ctrl.expense.value, '总支出'),
+              const SizedBox(height: 12),
+              _buildCategoryCard(cs, '收入构成', _ctrl.incomeSlices.toList(),
+                  _ctrl.income.value, '总收入'),
               const SizedBox(height: 8),
             ],
           ),
@@ -238,22 +242,24 @@ class _StatsViewState extends State<StatsView> {
     );
   }
 
-  Widget _buildCategoryCard(ColorScheme cs) {
+  Widget _buildCategoryCard(
+      ColorScheme cs, String title, List<CategorySlice> slices, double total,
+      String centerLabel) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('支出构成',
+            Text(title,
                 style:
                     const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
             const SizedBox(height: 14),
-            if (_ctrl.expenseSlices.isEmpty)
+            if (slices.isEmpty)
               SizedBox(
                 height: 120,
                 child: Center(
-                  child: Text('该时段暂无支出',
+                  child: Text('该时段暂无数据',
                       style: TextStyle(
                           fontSize: 13,
                           color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
@@ -261,8 +267,9 @@ class _StatsViewState extends State<StatsView> {
               )
             else
               DonutChart(
-                slices: _ctrl.expenseSlices.toList(),
-                total: _ctrl.expense.value,
+                slices: slices,
+                total: total,
+                centerLabel: centerLabel,
               ),
           ],
         ),

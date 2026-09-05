@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
 import '../../data/services/github_sync_service.dart';
@@ -80,6 +81,17 @@ class SettingsPage extends StatelessWidget {
                   leading: Icon(Icons.info_outline),
                   title: Text('版本'),
                   trailing: Text('v1.0.0'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.code_rounded),
+                  title: const Text('开源仓库地址'),
+                  subtitle: const Text('github.com/Changbaiqi/gongmo'),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: () => launchUrl(
+                    Uri.parse('https://github.com/Changbaiqi/gongmo'),
+                    mode: LaunchMode.externalApplication,
+                  ),
                 ),
                 const Divider(height: 1),
                 ListTile(

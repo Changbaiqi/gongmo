@@ -226,7 +226,7 @@ class _HomePageState extends State<HomePage> {
         child: Row(
           children: [
             Expanded(child: segment('记账', 0)),
-            Expanded(child: segment('图表', 1)),
+            Expanded(child: segment('统计', 1)),
           ],
         ),
       ),
@@ -836,11 +836,10 @@ class _HomePageState extends State<HomePage> {
     required RxString selectedCatId,
   }) {
     return Obx(() {
-      fc.categoriesRevision.value; // 新增分类后刷新
+      fc.categoriesRevision.value; // 新增/删除/修改分类后刷新
       final type = isExpense.value ? FinanceType.expense : FinanceType.income;
       final activeCats =
           fc.categories.where((c) => c.type == type).toList();
-      if (activeCats.isEmpty) return const SizedBox.shrink();
       if (selectedCatId.value.isEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           selectedCatId.value = activeCats.first.id;
@@ -852,6 +851,7 @@ class _HomePageState extends State<HomePage> {
         physics: const NeverScrollableScrollPhysics(),
         childAspectRatio: 0.95,
         children: [
+          _categoryManageTile(fc, cs, isExpense.value, selectedCatId),
           ...activeCats.map((cat) {
             final selected = selectedCatId.value == cat.id;
             final color = IconUtils.hex(cat.color, cs.primary);
