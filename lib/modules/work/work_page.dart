@@ -249,7 +249,7 @@ class _WorkPageState extends State<WorkPage> {
         _bigClock(),
         if (_ctrl.isClockedIn.value) ...[
           const SizedBox(height: 6),
-          Text('上班: ${DateHelper.formatTime(_ctrl.clockInTime.value!)}',
+          Text('打卡: ${DateHelper.formatTime(_ctrl.clockInTime.value!)}',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 15)),
           const SizedBox(height: 4),
           Text(
@@ -260,7 +260,7 @@ class _WorkPageState extends State<WorkPage> {
           ),
           const SizedBox(height: 24),
           _clockButton(
-            label: '下班',
+            label: '结束打卡',
             isStop: true,
             onTap: () {
               HapticFeedback.mediumImpact();
@@ -288,7 +288,7 @@ class _WorkPageState extends State<WorkPage> {
             const SizedBox(height: 84),
           ] else
             _clockButton(
-              label: '上班',
+              label: '打卡',
               onTap: () {
                 HapticFeedback.mediumImpact();
                 _ctrl.clockIn();
@@ -864,42 +864,54 @@ class _WorkPageState extends State<WorkPage> {
     return FlipClock(time: _now);
   }
 
+  /// 上下班打卡按钮：上班跟随所选标签色，下班用主题错误色，风格与全页一致
   Widget _clockButton({
     required String label,
     required VoidCallback onTap,
     bool isStop = false,
   }) {
-    final color = isStop ? const Color(0xFFEF5350) : const Color(0xFF4CAF50);
-    final gradient = isStop
-        ? const [Color(0xFFE53935), Color(0xFFC62828)]
-        : const [Color(0xFF43A047), Color(0xFF2E7D32)];
+    final cs = Theme.of(context).colorScheme;
+    final tag = _ctrl.currentTimerTag.value;
+    final base = isStop
+        ? cs.error
+        : (tag != null ? _parseColor(tag.color) : cs.primary);
+    final dark = Color.lerp(base, Colors.black, 0.16)!;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 78,
-        height: 78,
+        width: 112,
+        height: 112,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: gradient,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.35),
-              blurRadius: 18,
-              offset: const Offset(0, 5),
-            ),
-          ],
+          color: base.withValues(alpha: isStop ? 0.10 : 0.08),
         ),
-        child: Center(
-          child: Text(label,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2)),
+        child: Container(
+          width: 78,
+          height: 78,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [base, dark],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: base.withValues(alpha: 0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2)),
+          ),
         ),
       ),
     );

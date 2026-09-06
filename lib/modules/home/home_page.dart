@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/icon_utils.dart';
+import '../../core/widgets/count_up_text.dart';
 import '../../core/widgets/swipe_action_card.dart';
 import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
@@ -27,6 +28,7 @@ class _HomePageState extends State<HomePage> {
       Get.put(DashboardController(), tag: 'dashboard');
   final PageController _pageCtrl = PageController();
   int _financeSubIndex = 0;
+  int _financePlayKey = 0; // 切回记账页时自增，触发金额滚动动效
 
   @override
   void initState() {
@@ -42,6 +44,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onPageChanged(int index) {
+    if (index == 0) _financePlayKey++; // 切回记账页触发金额滚动动效
     setState(() => _currentIndex = index);
   }
 
@@ -188,7 +191,10 @@ class _HomePageState extends State<HomePage> {
         onTap: () {
           if (_financeSubIndex == index) return;
           HapticFeedback.selectionClick();
-          setState(() => _financeSubIndex = index);
+          setState(() {
+            _financeSubIndex = index;
+            if (index == 0) _financePlayKey++;
+          });
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
@@ -298,8 +304,10 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              '¥${balance.toStringAsFixed(2)}',
+            CountUpText(
+              value: balance,
+              restartKey: _financePlayKey,
+              formatter: (v) => '¥${v.toStringAsFixed(2)}',
               style: TextStyle(
                 color: onPrimary,
                 fontSize: 30,
@@ -317,6 +325,7 @@ class _HomePageState extends State<HomePage> {
                     icon: Icons.arrow_outward_rounded,
                     label: '本月收入',
                     value: income,
+                    restartKey: _financePlayKey,
                   ),
                 ),
                 Container(
@@ -331,6 +340,7 @@ class _HomePageState extends State<HomePage> {
                     icon: Icons.south_west_rounded,
                     label: '本月支出',
                     value: expense,
+                    restartKey: _financePlayKey,
                   ),
                 ),
               ],
@@ -346,6 +356,7 @@ class _HomePageState extends State<HomePage> {
     required IconData icon,
     required String label,
     required double value,
+    required int restartKey,
   }) {
     final onPrimary = cs.onPrimary;
     return Row(
@@ -368,12 +379,16 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(
                     color: onPrimary.withValues(alpha: 0.7),
                     fontSize: 11)),
-            Text('¥${value.toStringAsFixed(2)}',
-                style: TextStyle(
-                    color: onPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()])),
+            CountUpText(
+              value: value,
+              restartKey: restartKey,
+              formatter: (v) => '¥${v.toStringAsFixed(2)}',
+              style: TextStyle(
+                  color: onPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()]),
+            ),
           ],
         ),
       ],
