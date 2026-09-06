@@ -1,5 +1,8 @@
 import 'package:get/get.dart';
 import '../../modules/home/home_page.dart';
+import '../../modules/more/exchange_rate_page.dart';
+import '../../modules/more/invoice_page.dart';
+import '../../modules/more/more_page.dart';
 import '../../modules/work/work_page.dart';
 import '../../modules/finance/finance_page.dart';
 import '../../modules/sync/sync_page.dart';
@@ -27,6 +30,18 @@ class AppPages {
     GetPage(
       name: AppRoutes.settings,
       page: () => const SettingsPage(),
+    ),
+    GetPage(
+      name: AppRoutes.more,
+      page: () => const MorePage(),
+    ),
+    GetPage(
+      name: AppRoutes.invoice,
+      page: () => const InvoicePage(),
+    ),
+    GetPage(
+      name: AppRoutes.exchange,
+      page: () => const ExchangeRatePage(),
     ),
   ];
 }

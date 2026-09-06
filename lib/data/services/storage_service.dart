@@ -7,6 +7,7 @@ import '../models/finance_entry.dart';
 import '../models/category.dart';
 import '../models/account.dart';
 import '../models/timer_tag.dart';
+import '../models/invoice_profile.dart';
 
 class StorageService {
   static final StorageService _instance = StorageService._();
@@ -21,6 +22,7 @@ class StorageService {
   List<Category> _categories = [];
   List<Account> _accounts = [];
   List<TimerTag> _timerTags = [];
+  List<InvoiceProfile> _invoiceProfiles = [];
   Map<String, dynamic> _config = {};
 
   /// 数据落盘后的回调（用于自动同步）；恢复数据过程中不触发
@@ -39,6 +41,7 @@ class StorageService {
   List<Category> get categories => _categories;
   List<Account> get accounts => _accounts;
   List<TimerTag> get timerTags => _timerTags;
+  List<InvoiceProfile> get invoiceProfiles => _invoiceProfiles;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -73,6 +76,10 @@ class StorageService {
     _timerTags = await _loadList<TimerTag>(
       'timer_tags.json',
       (json) => TimerTag.fromJson(json),
+    );
+    _invoiceProfiles = await _loadList<InvoiceProfile>(
+      'invoice_profiles.json',
+      (json) => InvoiceProfile.fromJson(json),
     );
 
     if (_categories.isEmpty) {
@@ -258,6 +265,27 @@ class StorageService {
   Future<void> saveTimerTags() async {
     await _saveList('timer_tags.json', _timerTags);
     _notifyDataChanged();
+  }
+
+  Future<void> saveInvoiceProfiles() =>
+      _saveList('invoice_profiles.json', _invoiceProfiles);
+
+  void addInvoiceProfile(InvoiceProfile profile) {
+    _invoiceProfiles.add(profile);
+    saveInvoiceProfiles();
+  }
+
+  void updateInvoiceProfile(InvoiceProfile profile) {
+    final index = _invoiceProfiles.indexWhere((e) => e.id == profile.id);
+    if (index != -1) {
+      _invoiceProfiles[index] = profile;
+      saveInvoiceProfiles();
+    }
+  }
+
+  void removeInvoiceProfile(String id) {
+    _invoiceProfiles.removeWhere((e) => e.id == id);
+    saveInvoiceProfiles();
   }
 
   void addWorkEntry(WorkEntry entry) {

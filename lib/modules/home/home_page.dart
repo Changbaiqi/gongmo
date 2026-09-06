@@ -6,6 +6,7 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/icon_utils.dart';
 import '../../core/widgets/count_up_text.dart';
 import '../../core/widgets/swipe_action_card.dart';
+import '../../app/routes/app_routes.dart' show AppRoutes;
 import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/models/work_entry.dart';
@@ -583,7 +584,16 @@ class _HomePageState extends State<HomePage> {
                       cs,
                       icon,
                       label,
-                      onTap: label == '预算' ? _showBudgetDialog : null,
+                      onTap: () {
+                        switch (label) {
+                          case '预算':
+                            _showBudgetDialog();
+                          case '更多':
+                            Get.toNamed(AppRoutes.more);
+                          default:
+                            Get.snackbar('提示', '「$label」功能开发中，敬请期待');
+                        }
+                      },
                     ),
                   ),
                   if (label != _balanceMenuItems.last.$2)
