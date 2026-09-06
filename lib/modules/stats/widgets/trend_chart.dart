@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../stats_controller.dart';
 
+/// 收支趋势折线图：收入/支出双折线，点击查看某时段数值
 class TrendChart extends StatefulWidget {
   final List<TrendBucket> buckets;
   final Color incomeColor;
@@ -19,21 +20,36 @@ class TrendChart extends StatefulWidget {
   State<TrendChart> createState() => _TrendChartState();
 }
 
-class _TrendChartState extends State<TrendChart> {
-  static const _hPad = 8.0;
+class _TrendChartState extends State<TrendChart>
+    with SingleTickerProviderStateMixin {
+  static const _hPad = 12.0;
+  int? _selected;
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 450),
+  );
 
-  /// 选中的柱形：桶下标 + 是否为收入柱（左半区=收入，右半区=支出）
-  int? _selIdx;
-  bool _selIncome = true;
+  @override
+  void initState() {
+    super.initState();
+    _reveal.forward();
+  }
 
   @override
   void didUpdateWidget(covariant TrendChart oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.buckets != widget.buckets) {
-      _selIdx = null;
-    } else if (_selIdx != null && _selIdx! >= widget.buckets.length) {
-      _selIdx = null;
+      _selected = null;
+      _reveal.forward(from: 0);
+    } else if (_selected != null && _selected! >= widget.buckets.length) {
+      _selected = null;
     }
+  }
+
+  @override
+  void dispose() {
+    _reveal.dispose();
+    super.dispose();
   }
 
   @override
@@ -49,30 +65,21 @@ class _TrendChartState extends State<TrendChart> {
               final n = widget.buckets.length;
               if (n == 0) return;
               final bw = (constraints.maxWidth - _hPad * 2) / n;
-              final dx = details.localPosition.dx - _hPad;
-              var idx = (dx / bw).floor();
+              final idx =
+                  ((details.localPosition.dx - _hPad) / bw).floor();
               if (idx < 0 || idx >= n) return;
-              // 每个桶左半边为收入柱、右半边为支出柱的点击区
-              final isIncome = dx < (idx + 0.5) * bw;
               HapticFeedback.selectionClick();
-              setState(() {
-                if (_selIdx == idx && _selIncome == isIncome) {
-                  _selIdx = null;
-                } else {
-                  _selIdx = idx;
-                  _selIncome = isIncome;
-                }
-              });
+              setState(() => _selected = _selected == idx ? null : idx);
             },
             child: CustomPaint(
-              painter: _TrendPainter(
+              painter: _TrendLinePainter(
                 buckets: widget.buckets,
                 incomeColor: widget.incomeColor,
                 expenseColor: widget.expenseColor,
                 labelColor: Theme.of(context).colorScheme.onSurfaceVariant,
                 axisColor: Theme.of(context).colorScheme.outlineVariant,
-                selectedIndex: _selIdx,
-                selectedIncome: _selIncome,
+                selectedIndex: _selected,
+                reveal: _reveal,
               ),
             ),
           );
@@ -82,29 +89,31 @@ class _TrendChartState extends State<TrendChart> {
   }
 }
 
-class _TrendPainter extends CustomPainter {
+class _TrendLinePainter extends CustomPainter {
   final List<TrendBucket> buckets;
   final Color incomeColor;
   final Color expenseColor;
   final Color labelColor;
   final Color axisColor;
   final int? selectedIndex;
-  final bool selectedIncome;
+  final Animation<double> reveal;
 
-  _TrendPainter({
+  static const _hPadPadding = 12.0;
+
+  _TrendLinePainter({
     required this.buckets,
     required this.incomeColor,
     required this.expenseColor,
     required this.labelColor,
     required this.axisColor,
     this.selectedIndex,
-    this.selectedIncome = true,
-  });
+    required this.reveal,
+  }) : super(repaint: reveal);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (buckets.isEmpty) return;
-    const topPad = 22.0;
+    const topPad = 24.0;
     const bottomPad = 26.0;
     final hPad = _hPadPadding;
     final plotW = size.width - hPad * 2;
@@ -117,8 +126,20 @@ class _TrendPainter extends CustomPainter {
       maxV = math.max(maxV, b.expense);
     }
     if (maxV <= 0) maxV = 100;
-    maxV *= 1.15;
+    maxV *= 1.2;
 
+    double yOf(double v) => topPad + plotH - (v / maxV * plotH);
+    double cxOf(int i) => hPad + bw * i + bw / 2;
+
+    // 横向辅助网格线
+    final gridPaint = Paint()
+      ..color = axisColor.withValues(alpha: 0.35)
+      ..strokeWidth = 1;
+    for (final f in [1 / 3.0, 2 / 3.0]) {
+      final y = topPad + plotH * f;
+      canvas.drawLine(Offset(hPad, y), Offset(size.width - hPad, y), gridPaint);
+    }
+    // 底部轴线
     final axisPaint = Paint()
       ..color = axisColor
       ..strokeWidth = 1;
@@ -128,9 +149,57 @@ class _TrendPainter extends CustomPainter {
       axisPaint,
     );
 
-    final normalBarW = math.max(2.5, math.min(16.0, bw * 0.3));
-    const gap = 3.0;
+    // 选中桶的高亮底色
+    if (selectedIndex != null && selectedIndex! >= 0) {
+      final i = selectedIndex!;
+      final rect = Rect.fromLTWH(hPad + bw * i, topPad - 6, bw, plotH + 6);
+      canvas.drawRect(
+          rect, Paint()..color = labelColor.withValues(alpha: 0.06));
+    }
 
+    // 折线主体（从左到右揭示动画）
+    canvas.save();
+    canvas.clipRect(
+        Rect.fromLTWH(0, 0, size.width * reveal.value, size.height));
+
+    for (final series in [
+      (color: incomeColor, isIncome: true),
+      (color: expenseColor, isIncome: false),
+    ]) {
+      final path = Path();
+      var started = false;
+      for (var i = 0; i < buckets.length; i++) {
+        final v = series.isIncome ? buckets[i].income : buckets[i].expense;
+        final p = Offset(cxOf(i), yOf(v));
+        if (!started) {
+          path.moveTo(p.dx, p.dy);
+          started = true;
+        } else {
+          path.lineTo(p.dx, p.dy);
+        }
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = series.color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+      // 数据点
+      for (var i = 0; i < buckets.length; i++) {
+        final v = series.isIncome ? buckets[i].income : buckets[i].expense;
+        canvas.drawCircle(
+          Offset(cxOf(i), yOf(v)),
+          i == selectedIndex ? 4.5 : 3,
+          Paint()..color = series.color,
+        );
+      }
+    }
+    canvas.restore();
+
+    // x 轴刻度标签
     final stride = (buckets.length / 8).ceil();
     final labelIdx = <int>[
       for (var i = 0; i < buckets.length; i++)
@@ -141,101 +210,67 @@ class _TrendPainter extends CustomPainter {
     }
     const minGap = 26.0;
     for (var j = labelIdx.length - 2; j > 0; j--) {
-      final cxLast = hPad + bw * labelIdx[j + 1] + bw / 2;
-      final cxCur = hPad + bw * labelIdx[j] + bw / 2;
+      final cxLast = cxOf(labelIdx[j + 1]);
+      final cxCur = cxOf(labelIdx[j]);
       if (cxLast - cxCur < minGap) {
         labelIdx.removeAt(j);
       }
     }
-
     for (var i = 0; i < buckets.length; i++) {
-      final b = buckets[i];
-      final cx = hPad + bw * i + bw / 2;
-      final isSelBucket = i == selectedIndex;
-      final x0 = cx - (normalBarW * 2 + gap) / 2;
-
-      // 选中柱加粗：以原柱中心为轴向两侧加宽，另一根柱保持原样
-      final incomeW = isSelBucket && selectedIncome
-          ? math.min(normalBarW * 1.8, bw * 0.46)
-          : normalBarW;
-      final expenseW = isSelBucket && !selectedIncome
-          ? math.min(normalBarW * 1.8, bw * 0.46)
-          : normalBarW;
-      final incomeGrow = incomeW - normalBarW;
-      final expenseGrow = expenseW - normalBarW;
-      final incomeX = x0 - incomeGrow / 2;
-      final expenseX = x0 + normalBarW + gap - expenseGrow / 2;
-
-      final incomeTop = _drawBar(canvas, incomeX, incomeW, b.income, maxV,
-          topPad, plotH, incomeColor);
-      final expenseTop = _drawBar(canvas, expenseX, expenseW, b.expense,
-          maxV, topPad, plotH, expenseColor);
-
-      if (isSelBucket) {
-        final value = selectedIncome ? b.income : b.expense;
-        final color = selectedIncome ? incomeColor : expenseColor;
-        final barTop = selectedIncome ? incomeTop : expenseTop;
-        final barCx = selectedIncome
-            ? incomeX + incomeW / 2
-            : expenseX + expenseW / 2;
-        _drawAmount(
-            canvas, _fmt(value), barCx, barTop, color, size.width);
+      if (labelIdx.contains(i) || i == selectedIndex) {
+        _drawText(canvas, buckets[i].label, cxOf(i), topPad + plotH + 8,
+            color: labelColor,
+            bold: i == selectedIndex,
+            center: true);
       }
+    }
 
-      if (labelIdx.contains(i) || isSelBucket) {
-        _drawAxisLabel(canvas, b.label, cx, topPad + plotH + 8, bold: isSelBucket);
+    // 选中：竖向参考线 + 数值标签（纵向堆叠防重叠）
+    if (selectedIndex != null && selectedIndex! >= 0) {
+      final i = selectedIndex!;
+      final b = buckets[i];
+      final cx = cxOf(i);
+      final iy = yOf(b.income);
+      final ey = yOf(b.expense);
+
+      final guide = Paint()
+        ..color = labelColor.withValues(alpha: 0.4)
+        ..strokeWidth = 1;
+      canvas.drawLine(Offset(cx, topPad - 4), Offset(cx, topPad + plotH), guide);
+
+      final labels = <(Color, String)>[
+        if (b.income > 0) (incomeColor, '收 ${_fmt(b.income)}'),
+        if (b.expense > 0) (expenseColor, '支 ${_fmt(b.expense)}'),
+      ];
+      if (labels.isEmpty) {
+        _drawText(canvas, '¥0', cx, math.min(iy, ey) - 18,
+            color: labelColor, center: true);
+      } else {
+        final top = math.min(iy, ey) - 6 - labels.length * 13;
+        for (var k = 0; k < labels.length; k++) {
+          _drawText(canvas, labels[k].$2, cx, math.max(2.0, top + k * 13),
+              color: labels[k].$1, bold: true, center: true);
+        }
       }
     }
   }
 
-  double _drawBar(Canvas canvas, double x, double w, double v, double maxV,
-      double top, double plotH, Color color) {
-    if (v <= 0) return top + plotH;
-    final h = math.max(2.0, v / maxV * plotH);
-    final rect = Rect.fromLTWH(x, top + plotH - h, w, h);
-    final rrect = RRect.fromRectAndCorners(
-      rect,
-      topLeft: const Radius.circular(3),
-      topRight: const Radius.circular(3),
-    );
-    canvas.drawRRect(rrect, Paint()..color = color);
-    return top + plotH - h;
-  }
-
-  void _drawAmount(
-      Canvas canvas, String text, double cx, double barTop, Color color,
-      double chartWidth) {
+  void _drawText(Canvas canvas, String text, double cx, double y,
+      {required Color color, bool bold = false, bool center = true}) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
         style: TextStyle(
           fontSize: 10.5,
-          fontWeight: FontWeight.w700,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
           color: color,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    var lx = cx - tp.width / 2;
-    lx = lx.clamp(2.0, math.max(2.0, chartWidth - tp.width - 2));
-    final ly = math.max(2.0, barTop - tp.height - 4);
-    tp.paint(canvas, Offset(lx, ly));
-  }
-
-  void _drawAxisLabel(Canvas canvas, String text, double cx, double y,
-      {bool bold = false}) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
-          color: labelColor,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset(cx - tp.width / 2, y));
+    var x = center ? cx - tp.width / 2 : cx;
+    x = x.clamp(2.0, math.max(2.0, 9999.0));
+    tp.paint(canvas, Offset(x, y));
   }
 
   String _fmt(double v) {
@@ -244,10 +279,8 @@ class _TrendPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _TrendPainter oldDelegate) =>
+  bool shouldRepaint(covariant _TrendLinePainter oldDelegate) =>
       oldDelegate.buckets != buckets ||
       oldDelegate.selectedIndex != selectedIndex ||
-      oldDelegate.selectedIncome != selectedIncome;
+      oldDelegate.reveal.value != reveal.value;
 }
-
-const _hPadPadding = 8.0;

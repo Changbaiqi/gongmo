@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../stats/widgets/donut_chart.dart' show DonutChart;
+import 'month_duration_calendar.dart';
 import '../work_stats_controller.dart';
 import 'duration_bar_chart.dart';
 
@@ -29,11 +30,15 @@ class _WorkStatsViewState extends State<WorkStatsView> {
     return Obx(() => ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           children: [
-            _buildPeriodToggle(cs),
-            const SizedBox(height: 8),
-            _buildRangeBar(cs),
-            const SizedBox(height: 12),
-            _buildSummaryCard(cs),
+              _buildPeriodToggle(cs),
+              const SizedBox(height: 8),
+              _buildRangeBar(cs),
+              const SizedBox(height: 12),
+              if (_ctrl.period.value == WorkStatsPeriod.month) ...[
+                _buildMonthCalendarCard(cs),
+                const SizedBox(height: 12),
+              ],
+              _buildSummaryCard(cs),
             const SizedBox(height: 12),
             _buildTrendCard(cs),
             const SizedBox(height: 12),
@@ -185,6 +190,59 @@ class _WorkStatsViewState extends State<WorkStatsView> {
       width: 1,
       height: 32,
       color: cs.outlineVariant.withValues(alpha: 0.4),
+    );
+  }
+
+  /// 月视图：日历时长（每天下方显示所选标签的时长，右上角下拉切换）
+  Widget _buildMonthCalendarCard(ColorScheme cs) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Obx(
+          () => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('每日时长',
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  DropdownButton<String>(
+                    value: _ctrl.tagFilter.value,
+                    underline: const SizedBox.shrink(),
+                    isDense: true,
+                    borderRadius: BorderRadius.circular(10),
+                    style:
+                        TextStyle(fontSize: 12.5, color: cs.onSurface),
+                    icon: Icon(Icons.arrow_drop_down_rounded,
+                        color: cs.onSurfaceVariant),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('全部标签',
+                            style: TextStyle(fontSize: 12.5)),
+                      ),
+                      ..._ctrl.timerTags
+                          .map((t) => DropdownMenuItem<String>(
+                                value: t.name,
+                                child: Text(t.name,
+                                    style: const TextStyle(fontSize: 12.5)),
+                              )),
+                    ],
+                    onChanged: (v) => _ctrl.setTagFilter(v),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              MonthDurationCalendar(
+                month: _ctrl.anchor.value,
+                dayMinutes: _ctrl.monthDayMinutes,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

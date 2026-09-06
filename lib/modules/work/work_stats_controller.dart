@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:get/get.dart';
 import '../../core/utils/icon_utils.dart';
+import '../../data/models/timer_tag.dart';
 import '../../data/repositories/work_repository.dart';
 import '../../data/models/work_entry.dart';
 import '../../data/services/storage_service.dart';
@@ -20,6 +21,17 @@ class WorkStatsController extends GetxController {
 
   final period = WorkStatsPeriod.day.obs;
   final anchor = DateTime.now().obs;
+
+  /// 月历筛选：null=全部标签，否则为标签名
+  final tagFilter = Rxn<String>();
+  final monthDayMinutes = <int, double>{}.obs;
+
+  List<TimerTag> get timerTags => StorageService().timerTags;
+
+  void setTagFilter(String? tag) {
+    tagFilter.value = tag;
+    refresh();
+  }
 
   final totalMinutes = 0.0.obs;
   final entryCount = 0.obs;
@@ -156,6 +168,19 @@ class WorkStatsController extends GetxController {
     }
     totalMinutes.value = totalMinutesSum;
     entryCount.value = entries.length;
+
+    // 月历：按天聚合时长（可按标签筛选）
+    final dayMap = <int, double>{};
+    for (final e in entries) {
+      if (tagFilter.value != null && e.projectName != tagFilter.value) {
+        continue;
+      }
+      dayMap[e.startTime.day] = (dayMap[e.startTime.day] ?? 0) +
+          (e.duration?.inMinutes ?? 0).toDouble();
+    }
+    monthDayMinutes
+      ..clear()
+      ..addAll(dayMap);
 
     // 日均：按时段内已过天数折算
     final now = DateTime.now();

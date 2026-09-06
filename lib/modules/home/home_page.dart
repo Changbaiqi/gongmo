@@ -9,7 +9,6 @@ import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/models/work_entry.dart';
 import '../dashboard/dashboard_controller.dart';
-import '../dashboard/widgets/calendar_widget.dart';
 import '../work/work_controller.dart';
 import '../work/work_page.dart';
 import '../finance/finance_controller.dart';
@@ -27,7 +26,6 @@ class _HomePageState extends State<HomePage> {
   final DashboardController _dc =
       Get.put(DashboardController(), tag: 'dashboard');
   final PageController _pageCtrl = PageController();
-  final Rxn<DateTime> _selectedDate = Rxn<DateTime>();
   int _financeSubIndex = 0;
 
   @override
@@ -241,8 +239,6 @@ class _HomePageState extends State<HomePage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
-          _buildCalendar(),
-          const SizedBox(height: 12),
           _buildBalanceCard(),
           const SizedBox(height: 12),
           _buildActiveTimerBanner(),
@@ -256,23 +252,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildFinanceHeader() {
-    return Obx(() {
-      final sel = _selectedDate.value;
-      return Row(
-        children: [
-          Text(sel != null ? '${sel.month}月${sel.day}日 账目' : '全部账目',
-              style: Theme.of(context).textTheme.titleSmall),
-          if (sel != null) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _selectedDate.value = null,
-              child: Icon(Icons.cancel_rounded,
-                  size: 16, color: Theme.of(context).colorScheme.outline),
-            ),
-          ],
-        ],
-      );
-    });
+    return Text('全部账目',
+        style: Theme.of(context).textTheme.titleSmall);
   }
 
   Widget _buildBalanceCard() {
@@ -484,38 +465,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildCalendar() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Obx(() => MonthCalendar(
-              markedDates: _dc.entryDates.toSet(),
-              selectedDate: _selectedDate.value,
-              onDaySelected: (date) {
-                if (_selectedDate.value != null &&
-                    DateHelper.isSameDay(_selectedDate.value!, date)) {
-                  _selectedDate.value = null;
-                } else {
-                  _selectedDate.value = date;
-                }
-              },
-            )),
-      ),
-    );
-  }
-
   Widget _buildFinanceListContent(FinanceController fc) {
     return Obx(() {
-      final allEntries = fc.entries;
-      final sel = _selectedDate.value;
-      final entries = sel != null
-          ? allEntries.where((e) => DateHelper.isSameDay(e.date, sel)).toList()
-          : allEntries;
+      final entries = fc.entries;
 
       if (entries.isEmpty) {
         return _buildEmptyState(
           icon: Icons.receipt_long_outlined,
-          message: sel != null ? '该日期暂无账目' : '还没有账目，点击 + 记一笔吧',
+          message: '还没有账目，点击 + 记一笔吧',
         );
       }
 
@@ -982,6 +939,11 @@ class _HomePageState extends State<HomePage> {
                               key: ValueKey(cat.id),
                               dense: true,
                               contentPadding: EdgeInsets.zero,
+                              onTap: () => _showEditCategoryDialog(
+                                  fc: fc,
+                                  cat: cat,
+                                  isExpense: isExpense,
+                                  selectedCatId: selectedCatId),
                               leading: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [

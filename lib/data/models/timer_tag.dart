@@ -67,21 +67,18 @@ class TimerTag {
           name: '工作',
           icon: 'work',
           color: '#4CAF50',
-          isWork: true,
-          incomeType: incomeHourly,
-          hourlyRate: 150,
           sortOrder: 1),
-      TimerTag(
-          id: 'tag_study',
-          name: '学习',
-          icon: 'school',
-          color: '#2196F3',
-          sortOrder: 2),
       TimerTag(
           id: 'tag_rest',
           name: '休息',
           icon: 'self_improvement',
           color: '#FF9800',
+          sortOrder: 2),
+      TimerTag(
+          id: 'tag_study',
+          name: '学习',
+          icon: 'school',
+          color: '#2196F3',
           sortOrder: 3),
       TimerTag(
           id: 'tag_exercise',
@@ -89,12 +86,6 @@ class TimerTag {
           icon: 'fitness_center',
           color: '#E91E63',
           sortOrder: 4),
-      TimerTag(
-          id: 'tag_reading',
-          name: '阅读',
-          icon: 'menu_book',
-          color: '#9C27B0',
-          sortOrder: 5),
     ];
   }
 }

@@ -1,8 +1,8 @@
 flutter_launcher_icons:
-  image_path: "icon.png"
+  image_path: "gongmo_logo.png"
   android: true
   min_sdk_android: 21
-  adaptive_icon_background: "#F9FAFA"
-  adaptive_icon_foreground: "icon.png"
+  adaptive_icon_background: "#FAF9F9"
+  adaptive_icon_foreground: "gongmo_logo.png"
   ios: true
   remove_alpha_ios: true
