@@ -9,6 +9,7 @@ import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/models/timer_tag.dart';
 import '../../data/models/work_entry.dart';
+import '../../data/services/auto_bookkeeping_service.dart';
 import '../../data/services/github_sync_service.dart';
 import '../../data/services/storage_service.dart';
 import '../dashboard/dashboard_controller.dart';
@@ -16,7 +17,7 @@ import '../finance/finance_controller.dart';
 import '../settings/settings_controller.dart';
 import '../work/work_controller.dart';
 
-class SyncController extends GetxController {
+class SyncController extends GetxController with WidgetsBindingObserver {
   final StorageService _storage = StorageService();
   final GithubSyncService _sync = GithubSyncService.instance;
 
@@ -46,11 +47,30 @@ class SyncController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
     Get.put(SettingsController());
     // 数据落盘 → 防抖后自动备份
     _storage.onDataChanged = _onDataChanged;
     autoSync.value = _storage.getConfig('auto_sync') == true;
     refreshStats();
+  }
+
+  @override
+  void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoSyncTimer?.cancel();
+    super.onClose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 回到前台：处理自动记账队列（后台引擎写入的待入账条目）
+    if (state == AppLifecycleState.resumed) {
+      AutoBookkeepingService.instance.processQueue().then((_) {
+        _notifyUi();
+        refreshStats();
+      });
+    }
   }
 
   void setAutoSync(bool v) {
@@ -60,9 +80,22 @@ class SyncController extends GetxController {
   }
 
   void _onDataChanged() {
+    _notifyUi(); // 后台自动入账等数据变化时刷新前台界面
     if (!autoSync.value) return;
     _autoSyncTimer?.cancel();
     _autoSyncTimer = Timer(const Duration(seconds: 6), _runAutoSync);
+  }
+
+  void _notifyUi() {
+    try {
+      Get.find<FinanceController>().loadEntries();
+    } catch (_) {}
+    try {
+      Get.find<DashboardController>(tag: 'dashboard').refreshData();
+    } catch (_) {}
+    try {
+      Get.find<WorkController>().loadEntries();
+    } catch (_) {}
   }
 
   Future<void> _runAutoSync() async {

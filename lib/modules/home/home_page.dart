@@ -29,6 +29,7 @@ class _HomePageState extends State<HomePage> {
   final PageController _pageCtrl = PageController();
   int _financeSubIndex = 0;
   int _financePlayKey = 0; // 切回记账页时自增，触发金额滚动动效
+  DateTime? _financeMonthFilter; // 记账页月份筛选（null = 全部）
 
   @override
   void initState() {
@@ -240,27 +241,253 @@ class _HomePageState extends State<HomePage> {
   Widget _buildBookkeeping() {
     final fc = Get.find<FinanceController>();
 
-    return RefreshIndicator(
-      onRefresh: () async => _dc.refreshData(),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-        children: [
-          _buildBalanceCard(),
-          const SizedBox(height: 12),
-          _buildActiveTimerBanner(),
-          const SizedBox(height: 4),
-          _buildFinanceHeader(),
-          const SizedBox(height: 8),
-          _buildFinanceListContent(fc),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+      children: [
+        _buildBalanceCard(),
+        const SizedBox(height: 12),
+        _buildActiveTimerBanner(),
+        const SizedBox(height: 4),
+        _buildFinanceHeader(),
+        const SizedBox(height: 8),
+        _buildFinanceListContent(fc),
+      ],
+    );
+  }
+
+  Widget _buildFinanceHeader() {
+    final cs = Theme.of(context).colorScheme;
+    final filter = _financeMonthFilter;
+    final now = DateTime.now();
+    final viewMonth = filter ?? DateTime(now.year, now.month);
+    return Row(
+      children: [
+        Text(
+          filter == null
+              ? '全部账目'
+              : '${filter.year}年${filter.month}月 账目',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        if (filter != null) ...[
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () => setState(() => _financeMonthFilter = null),
+            child: Icon(Icons.cancel_rounded,
+                size: 16, color: cs.onSurfaceVariant),
+          ),
+        ],
+        const Spacer(),
+        // 右侧日期显示：点击弹出年月选择底部窗口
+        GestureDetector(
+          onTap: _showFinanceMonthPicker,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.calendar_month_rounded,
+                    size: 13, color: cs.onSurfaceVariant),
+                const SizedBox(width: 4),
+                Text('${viewMonth.year}年${viewMonth.month}月',
+                    style: TextStyle(
+                        fontSize: 11.5, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 月份筛选：Material 日期选择器（中文），取所选日期的年月
+  Future<void> _showFinanceMonthPicker() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _financeMonthFilter ?? DateTime(now.year, now.month),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      helpText: '选择年月',
+    );
+    if (picked != null) {
+      setState(
+          () => _financeMonthFilter = DateTime(picked.year, picked.month));
+    }
+  }
+
+  /// 本月预算：圆环展示使用情况 + 设置/清除预算额度
+  void _showBudgetDialog() {
+    final cs = Theme.of(context).colorScheme;
+    final budgetCtrl = TextEditingController(
+      text: _dc.monthlyBudget.value > 0
+          ? _dc.monthlyBudget.value.toStringAsFixed(0)
+          : '',
+    );
+
+    Get.dialog(
+      AlertDialog(
+        title: const Text('本月预算'),
+        content: SingleChildScrollView(
+          child: Obx(() {
+            final budget = _dc.monthlyBudget.value;
+            final used = _dc.monthExpense.value;
+            final pct = budget > 0 ? used / budget : 0.0;
+            final remaining = budget - used;
+            final ringColor = pct >= 1.0
+                ? Colors.red.shade600
+                : pct >= 0.8
+                    ? Colors.orange.shade700
+                    : cs.primary;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: _BudgetRing(
+                    progress: pct,
+                    progressColor: ringColor,
+                    trackColor: cs.surfaceContainerHighest,
+                    center: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          budget > 0 ? '${(pct * 100).round()}%' : '--',
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: pct >= 1.0
+                                  ? Colors.red.shade600
+                                  : cs.onSurface),
+                        ),
+                        const SizedBox(height: 2),
+                        Text('已使用',
+                            style: TextStyle(
+                                fontSize: 10.5,
+                                color: cs.onSurfaceVariant
+                                    .withValues(alpha: 0.8))),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _budgetStatRow('本月预算',
+                    budget > 0 ? '¥${budget.toStringAsFixed(2)}' : '未设置',
+                    cs.onSurface),
+                _budgetStatRow(
+                    '已使用', '¥${used.toStringAsFixed(2)}', cs.onSurface),
+                _budgetStatRow(
+                    '剩余',
+                    budget > 0
+                        ? (remaining >= 0
+                            ? '¥${remaining.toStringAsFixed(2)}'
+                            : '已超支 ¥${(-remaining).toStringAsFixed(2)}')
+                        : '--',
+                    remaining >= 0 ? cs.primary : Colors.red.shade600),
+                if (pct >= 1.0) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Text('本月支出已超出预算，注意控制消费哦',
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.red.shade700)),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                TextField(
+                  controller: budgetCtrl,
+                  autofocus: budget <= 0,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: '每月预算额度 (¥)',
+                    prefixText: '¥ ',
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Center(
+                  child: Text('预算按自然月统计，每月自动重置使用进度',
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          color:
+                              cs.onSurfaceVariant.withValues(alpha: 0.7))),
+                ),
+              ],
+            );
+          }),
+        ),
+        actions: [
+          if (_dc.monthlyBudget.value > 0)
+            TextButton(
+              onPressed: () {
+                _dc.setBudget(0);
+                Get.back();
+                Get.snackbar('已清除', '预算已清除');
+              },
+              child:
+                  const Text('清除预算', style: TextStyle(color: Colors.red)),
+            ),
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(budgetCtrl.text);
+              if (v == null || v <= 0) {
+                Get.snackbar('提示', '请输入有效的预算金额');
+                return;
+              }
+              _dc.setBudget(v);
+              Get.back();
+              Get.snackbar('预算已设置', '每月预算 ¥${v.toStringAsFixed(2)}');
+            },
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildFinanceHeader() {
-    return Text('全部账目',
-        style: Theme.of(context).textTheme.titleSmall);
+  Widget _budgetStatRow(String label, String value, Color color) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 13, color: cs.onSurfaceVariant)),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+        ],
+      ),
+    );
   }
+
+  /// 结余卡快捷菜单
+  static const _balanceMenuItems = <(IconData, String)>[
+    (Icons.receipt_long_rounded, '账单'),
+    (Icons.savings_rounded, '预算'),
+    (Icons.account_balance_rounded, '资产管家'),
+    (Icons.more_horiz_rounded, '更多'),
+  ];
 
   Widget _buildBalanceCard() {
     final cs = Theme.of(context).colorScheme;
@@ -345,10 +572,127 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Container(height: 1, color: onPrimary.withValues(alpha: 0.18)),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                for (final (icon, label) in _balanceMenuItems) ...[
+                  Expanded(
+                    child: _balanceMenuButton(
+                      cs,
+                      icon,
+                      label,
+                      onTap: label == '预算' ? _showBudgetDialog : null,
+                    ),
+                  ),
+                  if (label != _balanceMenuItems.last.$2)
+                    const SizedBox(width: 8),
+                ],
+              ],
+            ),
+            if (_dc.monthlyBudget.value > 0) ...[
+              const SizedBox(height: 12),
+              Container(height: 1, color: onPrimary.withValues(alpha: 0.18)),
+              const SizedBox(height: 12),
+              // 预算使用进度条：中间显示百分比，下方居中显示“当月使用/预算”
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _showBudgetDialog,
+                child: Obx(() {
+                  final budget = _dc.monthlyBudget.value;
+                  final used = _dc.monthExpense.value;
+                  final pct = budget > 0 ? used / budget : 0.0;
+                  final barColor = pct >= 1.0
+                      ? Colors.red.shade300
+                      : pct >= 0.8
+                          ? Colors.amber.shade300
+                          : onPrimary;
+                  return Column(
+                    children: [
+                      SizedBox(
+                        height: 18,
+                        child: Stack(
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                color: onPrimary.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                            ),
+                            FractionallySizedBox(
+                              alignment: Alignment.centerLeft,
+                              widthFactor: pct.clamp(0.0, 1.0),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: barColor,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                              ),
+                            ),
+                            Positioned.fill(
+                              child: Center(
+                                child: Text(
+                                  '已使用 ${(pct * 100).round()}%',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: onPrimary),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Center(
+                        child: Text(
+                          '¥${used.toStringAsFixed(2)} / ¥${budget.toStringAsFixed(2)}',
+                          style: TextStyle(
+                              fontSize: 10.5,
+                              color: onPrimary.withValues(alpha: 0.75),
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ]),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+            ],
           ],
         ),
       );
     });
+  }
+
+  Widget _balanceMenuButton(
+      ColorScheme cs, IconData icon, String label,
+      {VoidCallback? onTap}) {
+    final onPrimary = cs.onPrimary;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap ?? () => Get.snackbar('提示', '「$label」功能开发中，敬请期待'),
+      child: Container(
+        height: 46,
+        decoration: BoxDecoration(
+          color: onPrimary.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 17, color: onPrimary),
+            const SizedBox(height: 3),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 10.5,
+                    color: onPrimary.withValues(alpha: 0.92))),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _balanceSubItem({
@@ -482,12 +826,20 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildFinanceListContent(FinanceController fc) {
     return Obx(() {
-      final entries = fc.entries;
+      final month = _financeMonthFilter;
+      final entries = month == null
+          ? fc.entries
+          : fc.entries
+              .where((e) =>
+                  e.date.year == month.year && e.date.month == month.month)
+              .toList();
 
       if (entries.isEmpty) {
         return _buildEmptyState(
           icon: Icons.receipt_long_outlined,
-          message: '还没有账目，点击 + 记一笔吧',
+          message: month == null
+              ? '还没有账目，点击 + 记一笔吧'
+              : '${month.year}年${month.month}月暂无账目',
         );
       }
 
@@ -616,10 +968,40 @@ class _HomePageState extends State<HomePage> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            subtitle: Text(
-              '${fc.getCategoryName(entry.categoryId)} · ${DateHelper.formatDisplay(entry.date)}',
-              style: TextStyle(
-                  fontSize: 12, color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+            subtitle: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    '${fc.getCategoryName(entry.categoryId)} · ${DateHelper.formatDisplay(entry.date)}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: entry.notificationSrc != null
+                        ? cs.primary.withValues(alpha: 0.14)
+                        : cs.surfaceContainerHighest.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    entry.notificationSrc != null ? '自动' : '手动',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      color: entry.notificationSrc != null
+                          ? cs.primary
+                          : cs.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ),
+              ],
             ),
             trailing: Text(
               '${isIncome ? '+' : '-'}¥${entry.amount.toStringAsFixed(2)}',
@@ -662,6 +1044,7 @@ class _HomePageState extends State<HomePage> {
     final noteCtrl = TextEditingController(text: entry.description);
     final isExpense = (entry.type == FinanceType.expense).obs;
     final selectedCatId = entry.categoryId.obs;
+    final entryTime = entry.date.obs;
 
     Get.bottomSheet(
       Container(
@@ -755,6 +1138,8 @@ class _HomePageState extends State<HomePage> {
                   ),
                   style: const TextStyle(fontSize: 14),
                 ),
+                const SizedBox(height: 12),
+                _entryTimeRow(entryTime),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -771,6 +1156,7 @@ class _HomePageState extends State<HomePage> {
                           : FinanceType.income;
                       entry.categoryId = selectedCatId.value;
                       entry.description = noteCtrl.text;
+                      entry.date = entryTime.value;
                       entry.updatedAt = DateTime.now();
                       fc.saveEntry(entry);
                       _dc.refreshData();
@@ -874,6 +1260,54 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// “分类管理”网格入口（置于最前）
+  /// 账目时间行：点击选择日期与时间（默认当前时间点）
+  Widget _entryTimeRow(Rx<DateTime> entryTime) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _pickEntryTime(entryTime),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        child: Obx(() => Row(
+              children: [
+                Icon(Icons.event_note_rounded,
+                    size: 16, color: cs.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Text(
+                  '时间：${DateHelper.formatDateTime(entryTime.value).substring(0, 16)}',
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                ),
+                const Spacer(),
+                Icon(Icons.edit_rounded,
+                    size: 14,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+              ],
+            )),
+      ),
+    );
+  }
+
+  Future<void> _pickEntryTime(Rx<DateTime> entryTime) async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: entryTime.value,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (d == null) return;
+    final tm = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(entryTime.value),
+    );
+    if (tm == null) return;
+    entryTime.value = DateTime(d.year, d.month, d.day, tm.hour, tm.minute);
+  }
+
   Widget _categoryManageTile(FinanceController fc, ColorScheme cs,
       bool isExpense, RxString selectedCatId) {
     return GestureDetector(
@@ -1359,6 +1793,7 @@ class _HomePageState extends State<HomePage> {
     final noteCtrl = TextEditingController();
     final isExpense = true.obs;
     final selectedCatId = ''.obs;
+    final entryTime = DateTime.now().obs;
 
     Get.bottomSheet(
       Container(
@@ -1452,6 +1887,8 @@ class _HomePageState extends State<HomePage> {
                   ),
                   style: const TextStyle(fontSize: 14),
                 ),
+                const SizedBox(height: 12),
+                _entryTimeRow(entryTime),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -1469,6 +1906,7 @@ class _HomePageState extends State<HomePage> {
                         amount: amount,
                         categoryId: selectedCatId.value,
                         description: noteCtrl.text,
+                        date: entryTime.value,
                       );
                       _dc.refreshData();
                       Get.back();
@@ -1524,4 +1962,79 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+}
+/// 预算圆环：显示使用进度
+class _BudgetRing extends StatelessWidget {
+  final double progress; // 0..1（可超过 1，绘制时截断）
+  final Color progressColor;
+  final Color trackColor;
+  final Widget center;
+
+  const _BudgetRing({
+    required this.progress,
+    required this.progressColor,
+    required this.trackColor,
+    required this.center,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 130,
+      height: 130,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CustomPaint(
+            size: const Size(130, 130),
+            painter: _BudgetRingPainter(
+              progress: progress,
+              progressColor: progressColor,
+              trackColor: trackColor,
+            ),
+          ),
+          center,
+        ],
+      ),
+    );
+  }
+}
+
+class _BudgetRingPainter extends CustomPainter {
+  final double progress;
+  final Color progressColor;
+  final Color trackColor;
+
+  _BudgetRingPainter({
+    required this.progress,
+    required this.progressColor,
+    required this.trackColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 13.0;
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height)
+        .deflate(stroke / 2 + 2);
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..color = trackColor;
+    canvas.drawCircle(size.center(Offset.zero), rect.width / 2, track);
+
+    final p = progress.clamp(0.0, 1.0);
+    if (p > 0) {
+      final arc = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round
+        ..color = progressColor;
+      canvas.drawArc(rect, -pi / 2, p * 2 * pi, false, arc);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BudgetRingPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
+      oldDelegate.progressColor != progressColor;
 }

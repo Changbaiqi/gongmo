@@ -4,10 +4,12 @@ import '../../data/repositories/work_repository.dart';
 import '../../data/repositories/finance_repository.dart';
 import '../../data/models/work_entry.dart';
 import '../../data/models/finance_entry.dart';
+import '../../data/services/storage_service.dart';
 
 class DashboardController extends GetxController {
   final WorkRepository _workRepo = WorkRepository();
   final FinanceRepository _financeRepo = FinanceRepository();
+  final StorageService _storage = StorageService();
 
   final todayWorkDuration = Duration.zero.obs;
   final todayWorkCount = 0.obs;
@@ -18,12 +20,24 @@ class DashboardController extends GetxController {
   final recentEntries = <dynamic>[].obs;
   final entryDates = <DateTime>{}.obs;
 
+  /// 本月预算额度（0 = 未设置）
+  final monthlyBudget = 0.0.obs;
+
   Timer? _timerTick;
 
   @override
   void onInit() {
     super.onInit();
+    monthlyBudget.value =
+        ((StorageService().getConfig('monthly_budget') ?? 0) as num)
+            .toDouble();
     refreshData();
+  }
+
+  /// 设置本月预算（传 0 表示清除）
+  void setBudget(double v) {
+    monthlyBudget.value = v;
+    _storage.setConfig('monthly_budget', v);
   }
 
   void refreshData() {

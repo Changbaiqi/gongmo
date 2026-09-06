@@ -24,6 +24,7 @@ class _WorkPageState extends State<WorkPage> {
 
   DateTime _now = DateTime.now();
   Timer? _clockTimer;
+  DateTime _recordDate = DateTime.now(); // 今日记录筛选日期
 
   /// 顶部页签：false=计时（正计时+打卡合并页） true=数据统计
   bool _statsMode = false;
@@ -304,12 +305,17 @@ class _WorkPageState extends State<WorkPage> {
 
   Widget _buildTodayRecords() {
     final cs = Theme.of(context).colorScheme;
-    final todayEntries = _ctrl.entries
-        .where((e) => DateHelper.isSameDay(e.startTime, DateTime.now()))
+    final isToday = DateHelper.isSameDay(_recordDate, DateTime.now());
+    final dayEntries = _ctrl.entries
+        .where((e) => DateHelper.isSameDay(e.startTime, _recordDate))
         .toList();
-    final totalDur = todayEntries.fold<Duration>(
+    final totalDur = dayEntries.fold<Duration>(
       Duration.zero,
-      (sum, e) => sum + (e.duration ?? e.liveElapsed),
+      (sum, e) =>
+          sum +
+          (e.endTime != null
+              ? (e.duration ?? Duration.zero)
+              : (isToday ? e.liveElapsed : Duration.zero)),
     );
 
     return Container(
@@ -326,36 +332,74 @@ class _WorkPageState extends State<WorkPage> {
         children: [
           Row(
             children: [
-              Text('今日记录',
+              Text(isToday ? '今日记录' : '${_recordDate.month}月${_recordDate.day}日 记录',
                   style: TextStyle(
                       color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1)),
               const Spacer(),
-              if (totalDur > Duration.zero)
-                Text('合计 ${DateHelper.formatDuration(totalDur)}',
-                    style: TextStyle(
-                        color: cs.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600)),
+              // 日期筛选：点击选择查看哪一天的数据
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _recordDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    setState(() => _recordDate =
+                        DateTime(picked.year, picked.month, picked.day));
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color:
+                        cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_month_rounded,
+                          size: 12, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Text(
+                        isToday
+                            ? '今天'
+                            : '${_recordDate.month}月${_recordDate.day}日',
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
           Expanded(
-            child: todayEntries.isEmpty
+            child: dayEntries.isEmpty
                 ? Center(
-                    child: Text('暂无记录，开始计时或打卡后自动记录',
+                    child: Text(
+                        isToday
+                            ? '暂无记录，开始计时或打卡后自动记录'
+                            : '该日暂无记录',
                         style: TextStyle(
                             color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                             fontSize: 12)),
                   )
                 : ListView.builder(
                     padding: EdgeInsets.zero,
-                    itemCount: todayEntries.length,
+                    itemCount: dayEntries.length,
                     itemExtent: 34,
                     itemBuilder: (context, index) =>
-                        _buildSessionItem(todayEntries[index]),
+                        _buildSessionItem(dayEntries[index]),
                   ),
           ),
         ],

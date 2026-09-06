@@ -33,7 +33,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   get: ^4.6.6
-  intl: ^0.19.0
+  intl: 0.20.3
   uuid: ^4.3.0
   path_provider: ^2.1.0
   flutter_secure_storage: ^9.0.0
@@ -41,6 +41,9 @@ dependencies:
   http: ^1.6.0
   wakelock_plus: ^1.5.2
   url_launcher: ^6.3.2
+  flutter_notification_listener: ^1.4.0
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:

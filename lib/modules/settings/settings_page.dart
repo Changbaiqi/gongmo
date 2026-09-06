@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
+import '../../data/services/auto_bookkeeping_service.dart';
 import '../../data/services/github_sync_service.dart';
 import 'settings_controller.dart';
 
@@ -27,6 +29,9 @@ class SettingsPage extends StatelessWidget {
         children: [
           _buildSectionTitle('外观'),
           _buildAppearanceCard(context, tc),
+          const SizedBox(height: 24),
+          _buildSectionTitle('自动记账'),
+          _AutoAccountingCard(ctrl: ctrl),
           const SizedBox(height: 24),
           _buildSectionTitle('GitHub 连接'),
           Card(
@@ -502,6 +507,153 @@ class SettingsPage extends StatelessWidget {
                 child: const Text('保存'),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 自动记账卡片：开关 + 通知使用权限入口（从系统设置返回后自动刷新状态）
+class _AutoAccountingCard extends StatefulWidget {
+  final SettingsController ctrl;
+
+  const _AutoAccountingCard({required this.ctrl});
+
+  @override
+  State<_AutoAccountingCard> createState() => _AutoAccountingCardState();
+}
+
+class _AutoAccountingCardState extends State<_AutoAccountingCard>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    widget.ctrl.refreshAutoAccountingStatus();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AutoAccountingCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    widget.ctrl.refreshAutoAccountingStatus();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统设置授权返回后刷新状态
+    if (state == AppLifecycleState.resumed) {
+      widget.ctrl.refreshAutoAccountingStatus();
+      if (widget.ctrl.autoAccounting.value &&
+          widget.ctrl.autoAccountingHasPermission.value) {
+        AutoBookkeepingService.instance.start();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Column(
+        children: [
+          Obx(() => SwitchListTile(
+                secondary: Icon(Icons.notifications_active_outlined,
+                    color: cs.primary),
+                title: const Text('自动记账',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  widget.ctrl.autoAccounting.value
+                      ? (widget.ctrl.autoAccountingRunning.value
+                          ? '监听服务运行中，已自动记录收支'
+                          : '监听服务启动中...')
+                      : '读取支付宝/招商银行通知，自动入账',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+                value: widget.ctrl.autoAccounting.value,
+                onChanged: (v) => widget.ctrl.setAutoAccounting(v),
+              )),
+          if (widget.ctrl.autoAccounting.value) ...[
+            const Divider(height: 1),
+            Obx(() => Column(
+                  children: [
+                    for (final app in AutoBookkeepingService.supportedApps)
+                      SwitchListTile(
+                        secondary: Icon(
+                          app.key == 'alipay'
+                              ? Icons.currency_yuan_rounded
+                              : Icons.account_balance_rounded,
+                          color: cs.primary.withValues(alpha: 0.8),
+                          size: 20,
+                        ),
+                        dense: true,
+                        title: Text(app.name,
+                            style: const TextStyle(fontSize: 13.5)),
+                        subtitle: Text(
+                          app.key == 'cmb'
+                              ? '入账/支出短信通知自动入账'
+                              : '支出/收入通知自动入账',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant
+                                  .withValues(alpha: 0.8)),
+                        ),
+                        value: widget.ctrl.autoApps[app.key] ?? true,
+                        onChanged: (v) =>
+                            widget.ctrl.setAutoApp(app.key, v),
+                      ),
+                  ],
+                )),
+          ],
+          const Divider(height: 1),
+          Obx(() => ListTile(
+                dense: true,
+                leading: Icon(
+                  widget.ctrl.autoAccountingHasPermission.value
+                      ? Icons.verified_user_outlined
+                      : Icons.key_rounded,
+                  size: 20,
+                  color: widget.ctrl.autoAccountingHasPermission.value
+                      ? Colors.green.shade600
+                      : Colors.orange.shade700,
+                ),
+                title: const Text('通知使用权限',
+                    style: TextStyle(fontSize: 13.5)),
+                subtitle: Text(
+                  widget.ctrl.autoAccountingHasPermission.value
+                      ? '已授权'
+                      : '未授权，点击前往系统设置开启',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () async {
+                  await NotificationsListener.openPermissionSettings();
+                  if (context.mounted) {
+                    widget.ctrl.refreshAutoAccountingStatus();
+                  }
+                },
+              )),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+            child: Text(
+              '开启后监听支付宝等通知（如"你有一笔200.00元的支出"）并自动入账，'
+              '自动记账的条目会在账目列表中标记为"自动"。'
+              '部分手机需在系统设置中允许本应用后台运行。',
+              style: TextStyle(
+                  fontSize: 11,
+                  height: 1.5,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+            ),
           ),
         ],
       ),

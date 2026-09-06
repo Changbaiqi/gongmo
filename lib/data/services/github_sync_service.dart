@@ -93,6 +93,13 @@ class GithubSyncService {
   Future<void> setLastSync(DateTime t) =>
       _storage.setConfig('last_sync', t.toIso8601String());
 
+  /// 读取轻量配置（供自动记账等模块使用）
+  dynamic readConfig(String key) => _storage.getConfig(key);
+
+  /// 写入轻量配置
+  Future<void> writeConfig(String key, dynamic value) =>
+      _storage.setConfig(key, value);
+
   // ---------- 同步 ----------
 
   Map<String, String> _headers(String token) => {

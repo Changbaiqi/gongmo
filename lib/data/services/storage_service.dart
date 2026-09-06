@@ -157,6 +157,27 @@ class StorageService {
   /// 读取轻量配置项（存储在 config.json）
   dynamic getConfig(String key) => _config[key];
 
+  /// 自动记账待处理队列（后台引擎写，主引擎读并处理）
+  File get _autoQueueFile => File('${_dataDir.path}/auto_queue.json');
+
+  Future<List<Map<String, dynamic>>> readAutoQueue() async {
+    try {
+      final f = _autoQueueFile;
+      if (!await f.exists()) return [];
+      final content = await f.readAsString();
+      final list = json.decode(content) as List<dynamic>;
+      return list
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> writeAutoQueue(List<Map<String, dynamic>> queue) async {
+    await _autoQueueFile.writeAsString(json.encode(queue));
+  }
   /// 写入轻量配置项
   Future<void> setConfig(String key, dynamic value) async {
     _config[key] = value;
@@ -176,6 +197,11 @@ class StorageService {
     } catch (_) {
       _config = {};
     }
+  }
+
+  /// 重新从磁盘加载配置（后台引擎读取最新开关状态用）
+  Future<void> reloadConfig() async {
+    await _loadConfig();
   }
 
   Future<List<T>> _loadList<T>(

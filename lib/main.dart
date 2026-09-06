@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'app/routes/app_pages.dart';
 import 'app/routes/app_routes.dart';
 import 'app/theme/app_theme.dart';
 import 'app/theme/theme_controller.dart';
+import 'data/services/auto_bookkeeping_service.dart';
 import 'data/services/storage_service.dart';
 import 'modules/sync/sync_controller.dart';
 
@@ -27,8 +29,11 @@ void main() async {
   await initializeDateFormatting('zh_CN');
   final storage = StorageService();
   await storage.init();
+  // 启动时处理自动记账队列（后台引擎在 App 关闭期间捕获的收支）
+  await AutoBookkeepingService.instance.processQueue();
   Get.put(ThemeController());
   Get.put(SyncController()); // 注册自动同步引擎
+  AutoBookkeepingService.instance.startIfNeeded(); // 若开关开启则启动监听服务
 
   runApp(const GongMoApp());
 }
@@ -56,6 +61,16 @@ class GongMoApp extends StatelessWidget {
         ),
         themeMode: tc.mode.value,
         debugShowCheckedModeBanner: false,
+        locale: const Locale('zh', 'CN'),
+        supportedLocales: const [
+          Locale('zh', 'CN'),
+          Locale('en', 'US'),
+        ],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         initialRoute: AppRoutes.dashboard,
         getPages: AppPages.routes,
         builder: useBackground
