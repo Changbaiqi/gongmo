@@ -11,6 +11,7 @@ import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/models/work_entry.dart';
 import '../dashboard/dashboard_controller.dart';
+import '../sync/sync_controller.dart';
 import '../work/work_controller.dart';
 import '../work/work_page.dart';
 import '../finance/finance_controller.dart';
@@ -23,7 +24,8 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   final DashboardController _dc =
       Get.put(DashboardController(), tag: 'dashboard');
@@ -32,15 +34,33 @@ class _HomePageState extends State<HomePage> {
   int _financePlayKey = 0; // 切回记账页时自增，触发金额滚动动效
   DateTime? _financeMonthFilter; // 记账页月份筛选（null = 全部）
 
+  final SyncController _sc = Get.find<SyncController>();
+  late final AnimationController _syncSpin = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  Worker? _syncWorker;
+
   @override
   void initState() {
     super.initState();
     Get.put(FinanceController());
     Get.put(WorkController());
+    // 自动备份期间：顶部同步图标旋转；结束后停止
+    _syncWorker = ever<bool>(_sc.isSyncing, (v) {
+      if (v) {
+        _syncSpin.repeat();
+      } else {
+        _syncSpin.stop();
+      }
+    });
+    if (_sc.isSyncing.value) _syncSpin.repeat();
   }
 
   @override
   void dispose() {
+    _syncWorker?.dispose();
+    _syncSpin.dispose();
     _pageCtrl.dispose();
     super.dispose();
   }
@@ -61,15 +81,56 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(_currentIndex == 0 ? '工墨记账' : '工墨时钟'),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.sync_outlined),
-            onPressed: () => Get.toNamed('/sync'),
-          ),
+          Obx(() {
+            final backing = _sc.isSyncing.value;
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: ScaleTransition(
+                  scale:
+                      Tween<double>(begin: 0.6, end: 1.0).animate(anim),
+                  child: child,
+                ),
+              ),
+              child: backing
+                  ? Container(
+                      key: const ValueKey('backing'),
+                      width: 58,
+                      height: 46,
+                      alignment: Alignment.center,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          RotationTransition(
+                            turns: _syncSpin,
+                            child: Icon(Icons.sync_rounded,
+                                size: 20, color: cs.primary),
+                          ),
+                          const SizedBox(height: 1),
+                          Text('备份中',
+                              style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.primary)),
+                        ],
+                      ),
+                    )
+                  : IconButton(
+                      key: const ValueKey('idle'),
+                      icon: const Icon(Icons.sync_outlined),
+                      onPressed: () => Get.toNamed('/sync'),
+                    ),
+            );
+          }),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => Get.toNamed('/settings'),

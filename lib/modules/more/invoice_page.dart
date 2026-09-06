@@ -45,10 +45,9 @@ class _InvoicePageState extends State<InvoicePage> {
               itemBuilder: (context, index) =>
                   _buildProfileCard(context, _profiles[index]),
             ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => _showProfileDialog(),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('添加抬头'),
+        child: const Icon(Icons.add_rounded),
       ),
     );
   }

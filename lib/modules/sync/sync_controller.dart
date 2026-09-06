@@ -109,10 +109,8 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       final now = DateTime.now();
       await _sync.setLastSync(now);
       lastSyncTime.value = now;
-      _lastSyncedHash = hash;
+      _lastSyncedHash = _storage.exportAllData().hashCode;
       refreshStats();
-      Get.snackbar('自动同步', '数据已自动备份到 GitHub',
-          duration: const Duration(seconds: 2));
     } catch (_) {
       // 自动同步失败时静默，等待下次数据变动重试
     } finally {
