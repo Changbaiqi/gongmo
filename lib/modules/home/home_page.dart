@@ -317,60 +317,76 @@ class _HomePageState extends State<HomePage>
         }
         return false;
       },
-      child: ListView(
+      child: CustomScrollView(
         controller: _financeScroll,
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-        children: [
-          ValueListenableBuilder<double>(
-            valueListenable: _balanceCollapse,
-            builder: (context, t, _) {
-              // 静止时测量卡片自然高度（含预算进度条等动态内容）
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (t < 0.01) {
-                  final h = _balanceKey.currentContext?.size?.height;
-                  if (h != null && h > 0) _balanceCardHeight = h;
-                }
-              });
-              final visibleH = max(0.0, _balanceCardHeight * (1 - t));
-              if (visibleH < 0.5) return const SizedBox.shrink();
-              return LayoutBuilder(
-                builder: (context, cons) {
-                  return SizedBox(
-                    height: visibleH,
-                    child: ClipRect(
-                      // OverflowBox：卡片保持自然高度参与翻转，避免内部 Flex 溢出断言；
-                      // 超出可见区域的部分由 ClipRect 裁掉
-                      child: OverflowBox(
-                        alignment: Alignment.topCenter,
-                        minWidth: 0,
-                        maxWidth: cons.maxWidth,
-                        minHeight: 0,
-                        maxHeight: _balanceCardHeight,
-                        child: Opacity(
-                          opacity: (1 - t).clamp(0.0, 1.0),
-                          child: Transform(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            sliver: SliverToBoxAdapter(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _balanceCollapse,
+                builder: (context, t, _) {
+                  // 静止时测量卡片自然高度（含预算进度条等动态内容）
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (t < 0.01) {
+                      final h = _balanceKey.currentContext?.size?.height;
+                      if (h != null && h > 0) _balanceCardHeight = h;
+                    }
+                  });
+                  final visibleH = max(0.0, _balanceCardHeight * (1 - t));
+                  if (visibleH < 0.5) return const SizedBox.shrink();
+                  return LayoutBuilder(
+                    builder: (context, cons) {
+                      return SizedBox(
+                        height: visibleH,
+                        child: ClipRect(
+                          // OverflowBox：卡片保持自然高度参与翻转，避免内部 Flex 溢出断言；
+                          // 超出可见区域的部分由 ClipRect 裁掉
+                          child: OverflowBox(
                             alignment: Alignment.topCenter,
-                            transform: Matrix4.identity()
-                              ..setEntry(3, 2, 0.001) // 透视
-                              ..rotateX(t * pi / 2) // 绕顶边向内翻折（视觉收缩）
-                              ..scale(1.0 - 0.06 * t),
-                            child: _buildBalanceCard(key: _balanceKey),
+                            minWidth: 0,
+                            maxWidth: cons.maxWidth,
+                            minHeight: 0,
+                            maxHeight: _balanceCardHeight,
+                            child: Opacity(
+                              opacity: (1 - t).clamp(0.0, 1.0),
+                              child: Transform(
+                                alignment: Alignment.topCenter,
+                                transform: Matrix4.identity()
+                                  ..setEntry(3, 2, 0.001) // 透视
+                                  ..rotateX(
+                                      t * pi / 2) // 绕顶边向内翻折（视觉收缩）
+                                  ..scale(1.0 - 0.06 * t),
+                                child: _buildBalanceCard(key: _balanceKey),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
                 },
-              );
-            },
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
-        _buildActiveTimerBanner(),
-        const SizedBox(height: 4),
-        _buildFinanceHeader(),
-        const SizedBox(height: 8),
-        _buildFinanceListContent(fc),
-      ],
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverToBoxAdapter(child: _buildActiveTimerBanner()),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 4)),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _FinanceHeaderDelegate(
+              builder: () => _buildFinanceHeader(),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+            sliver: SliverToBoxAdapter(child: _buildFinanceListContent(fc)),
+          ),
+        ],
       ),
     );
   }
@@ -2168,4 +2184,38 @@ class _BudgetRingPainter extends CustomPainter {
   bool shouldRepaint(covariant _BudgetRingPainter oldDelegate) =>
       oldDelegate.progress != progress ||
       oldDelegate.progressColor != progressColor;
+}
+/// “全部账目”筛选行：滚动时吸附在顶部
+class _FinanceHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget Function() builder;
+
+  _FinanceHeaderDelegate({required this.builder});
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final cs = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: SizedBox(
+        height: maxExtent,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: builder(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  double get maxExtent => 40;
+
+  @override
+  double get minExtent => 40;
+
+  @override
+  bool shouldRebuild(covariant _FinanceHeaderDelegate oldDelegate) => true;
 }
