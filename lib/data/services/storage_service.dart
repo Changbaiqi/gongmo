@@ -377,6 +377,7 @@ class StorageService {
       'categories': _categories.map((e) => e.toJson()).toList(),
       'accounts': _accounts.map((e) => e.toJson()).toList(),
       'timerTags': _timerTags.map((e) => e.toJson()).toList(),
+      'invoiceProfiles': _invoiceProfiles.map((e) => e.toJson()).toList(),
     };
   }
 
@@ -457,6 +458,7 @@ class StorageService {
     required List<Category> categories,
     required List<Account> accounts,
     required List<TimerTag> timerTags,
+    List<InvoiceProfile> invoiceProfiles = const [],
   }) async {
     _restoring = true; // 恢复过程触发的落盘不触发自动同步
     try {
@@ -465,6 +467,7 @@ class StorageService {
       if (categories.isNotEmpty) _categories = categories;
       if (accounts.isNotEmpty) _accounts = accounts;
       if (timerTags.isNotEmpty) _timerTags = timerTags;
+      if (invoiceProfiles.isNotEmpty) _invoiceProfiles = invoiceProfiles;
       await saveWorkEntries();
       await saveFinanceEntries();
       await saveCategories();

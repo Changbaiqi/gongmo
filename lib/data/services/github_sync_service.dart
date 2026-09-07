@@ -185,6 +185,8 @@ class GithubSyncService {
         'categories': _storage.categories.map((e) => e.toJson()).toList(),
         'accounts': _storage.accounts.map((e) => e.toJson()).toList(),
         'timerTags': _storage.timerTags.map((e) => e.toJson()).toList(),
+        'invoiceProfiles':
+            _storage.invoiceProfiles.map((e) => e.toJson()).toList(),
       },
     });
 
@@ -253,6 +255,7 @@ class GithubSyncService {
       'categories': global['categories'] ?? [],
       'accounts': global['accounts'] ?? [],
       'timerTags': global['timerTags'] ?? [],
+      'invoiceProfiles': global['invoiceProfiles'] ?? [],
     };
   }
 

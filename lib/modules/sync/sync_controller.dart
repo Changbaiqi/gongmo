@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../data/models/account.dart';
 import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
+import '../../data/models/invoice_profile.dart';
 import '../../data/models/timer_tag.dart';
 import '../../data/models/work_entry.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
@@ -167,6 +168,8 @@ class SyncController extends GetxController with WidgetsBindingObserver {
         categories: _parseList(data['categories'], Category.fromJson),
         accounts: _parseList(data['accounts'], Account.fromJson),
         timerTags: _parseList(data['timerTags'], TimerTag.fromJson),
+        invoiceProfiles:
+            _parseList(data['invoiceProfiles'], InvoiceProfile.fromJson),
       );
       _refreshAllControllers();
       refreshStats();
