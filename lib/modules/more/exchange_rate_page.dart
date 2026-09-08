@@ -15,17 +15,23 @@ class ExchangeRatePage extends StatefulWidget {
   State<ExchangeRatePage> createState() => _ExchangeRatePageState();
 }
 
-class _ExchangeRatePageState extends State<ExchangeRatePage> {
+class _ExchangeRatePageState extends State<ExchangeRatePage>
+    with SingleTickerProviderStateMixin {
   static const _apiBase = 'https://open.er-api.com/v6/latest/CNY';
   static const _cacheKey = 'fx_cache';
   static const _cacheTimeKey = 'fx_time';
 
   final _amountCtrl = TextEditingController(text: '100');
   bool _loading = true;
+  bool _fetching = false;
   String? _error;
   String? _updated; // 汇率更新时间
   String _base = 'CNY'; // 基准货币
   final Map<String, double> _rates = {}; // 1 CNY -> 币种数量
+  late final AnimationController _spin = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
 
   static const _baseOptions = <(String, String)>[
     ('CNY', '人民币'),
@@ -62,6 +68,13 @@ class _ExchangeRatePageState extends State<ExchangeRatePage> {
     _fetchRates();
   }
 
+  @override
+  void dispose() {
+    _spin.dispose();
+    _amountCtrl.dispose();
+    super.dispose();
+  }
+
   void _loadFromCache() {
     final raw = StorageService().getConfig(_cacheKey);
     if (raw is Map) {
@@ -76,10 +89,13 @@ class _ExchangeRatePageState extends State<ExchangeRatePage> {
   }
 
   Future<void> _fetchRates() async {
+    if (_fetching) return;
     setState(() {
+      _fetching = true;
       _loading = _rates.isEmpty;
       _error = null;
     });
+    _spin.repeat();
     try {
       final res = await http
           .get(Uri.parse(_apiBase))
@@ -118,6 +134,10 @@ class _ExchangeRatePageState extends State<ExchangeRatePage> {
         _loading = false;
         _error = _rates.isEmpty ? '汇率获取失败，请检查网络后刷新' : null;
       });
+    } finally {
+      _fetching = false;
+      _spin.stop();
+      if (mounted) setState(() {});
     }
   }
 

@@ -9,6 +9,16 @@ void main() {
     expect(r, isNotNull);
     expect(r!.$1, FinanceType.expense);
     expect(r.$2, 200.00);
+    expect(r.$3, isNull);
+  });
+
+  test('解析免密/自动扣款通知（含商户名）', () {
+    final r = AutoBookkeepingService.parseAlipay(
+        '你在luckincoffee有一笔16.9元的免密/自动扣款支付，点击领取6个支付宝积分。');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 16.9);
+    expect(r.$3, 'luckincoffee');
   });
 
   test('解析支付宝收入通知', () {

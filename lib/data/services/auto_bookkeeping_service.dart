@@ -111,7 +111,7 @@ class AutoBookkeepingService {
 
       final parsed = parseNotification(app.key, text);
       if (parsed == null) return;
-      final (type, amount) = parsed;
+      final (type, amount, merchant) = parsed;
 
       // 去重：同一笔交易常发多条通知（横幅 + 常驻）
       final dedupKey =
@@ -126,7 +126,9 @@ class AutoBookkeepingService {
         type: type,
         amount: amount,
         categoryId: type == FinanceType.expense ? 'exp_5' : 'inc_3',
-        description: '自动记账 · ${app.name}',
+        description: merchant != null
+            ? '自动记账 · $merchant'
+            : '自动记账 · ${app.name}',
         date: DateTime.now(),
         notificationSrc: app.key,
       );
@@ -153,8 +155,9 @@ class AutoBookkeepingService {
     }
   }
 
-  /// 解析应用通知文本，返回 (类型, 金额)
-  static (FinanceType, double)? parseNotification(String appKey, String text) {
+  /// 解析应用通知文本，返回 (类型, 金额, 商户名?)
+  static (FinanceType, double, String?)? parseNotification(
+      String appKey, String text) {
     if (appKey == 'cmb') {
       // 招商银行：如"您尾号9058的账户入账人民币1.00元"
       final income =
@@ -162,7 +165,7 @@ class AutoBookkeepingService {
       if (income != null) {
         final v = double.tryParse(income.group(1) ?? '');
         if (v != null && v > 0 && v < _maxAmount) {
-          return (FinanceType.income, v);
+          return (FinanceType.income, v, null);
         }
       }
       final expense = RegExp(r'(?:支出|消费)人民币\s*([0-9]+(?:\.[0-9]+)?)\s*元')
@@ -170,7 +173,7 @@ class AutoBookkeepingService {
       if (expense != null) {
         final v = double.tryParse(expense.group(1) ?? '');
         if (v != null && v > 0 && v < _maxAmount) {
-          return (FinanceType.expense, v);
+          return (FinanceType.expense, v, null);
         }
       }
       return null;
@@ -178,14 +181,24 @@ class AutoBookkeepingService {
     return parseAlipay(text);
   }
 
-  /// 解析支付宝通知文本，返回 (类型, 金额)
-  static (FinanceType, double)? parseAlipay(String text) {
+  /// 解析支付宝通知文本，返回 (类型, 金额, 商户名?)
+  static (FinanceType, double, String?)? parseAlipay(String text) {
+    // 免密/自动扣款：如"你在luckincoffee有一笔16.9元的免密/自动扣款支付"
+    final deduct = RegExp(
+            r'在(.{1,30}?)有一笔([0-9]+(?:\.[0-9]+)?)元的免密(?:/自动)?扣款')
+        .firstMatch(text);
+    if (deduct != null) {
+      final v = double.tryParse(deduct.group(2) ?? '');
+      if (v != null && v > 0 && v < _maxAmount) {
+        return (FinanceType.expense, v, deduct.group(1));
+      }
+    }
     final expense =
         RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元(?:的)?支出').firstMatch(text);
     if (expense != null) {
       final v = double.tryParse(expense.group(1) ?? '');
       if (v != null && v > 0 && v < _maxAmount) {
-        return (FinanceType.expense, v);
+        return (FinanceType.expense, v, null);
       }
     }
     final income = RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元(?:的)?收入')
@@ -195,7 +208,7 @@ class AutoBookkeepingService {
     if (income != null) {
       final v = double.tryParse(income.group(1) ?? '');
       if (v != null && v > 0 && v < _maxAmount) {
-        return (FinanceType.income, v);
+        return (FinanceType.income, v, null);
       }
     }
     return null;
