@@ -10,6 +10,7 @@ import '../../app/routes/app_routes.dart' show AppRoutes;
 import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/models/work_entry.dart';
+import '../../data/services/storage_service.dart';
 import '../dashboard/dashboard_controller.dart';
 import '../sync/sync_controller.dart';
 import '../work/work_controller.dart';
@@ -457,143 +458,300 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  /// 本月预算：圆环展示使用情况 + 设置/清除预算额度
+  /// 本月预算：总预算（可选）+ 分类预算管理
   void _showBudgetDialog() {
     final cs = Theme.of(context).colorScheme;
-    final budgetCtrl = TextEditingController(
-      text: _dc.monthlyBudget.value > 0
-          ? _dc.monthlyBudget.value.toStringAsFixed(0)
+    final totalCtrl = TextEditingController(
+      text: _dc.totalBudget.value > 0
+          ? _dc.totalBudget.value.toStringAsFixed(0)
           : '',
     );
+
+    Future<void> saveTotal() async {
+      final v = double.tryParse(totalCtrl.text.trim());
+      if (v != null && v < _dc.allocatedBudget) {
+        Get.snackbar('无法保存',
+            '总预算（¥${v.toStringAsFixed(2)}）不能低于分类预算之和（¥${_dc.allocatedBudget.toStringAsFixed(2)}）');
+        return;
+      }
+      _dc.setTotalBudget(v ?? 0);
+      Get.snackbar(v != null && v > 0 ? '总预算已设置' : '已清除',
+          v != null && v > 0 ? '总预算 ¥${v.toStringAsFixed(2)}' : '将自动按分类预算之和计算');
+    }
 
     Get.dialog(
       AlertDialog(
         title: const Text('本月预算'),
         content: SingleChildScrollView(
-          child: Obx(() {
-            final budget = _dc.monthlyBudget.value;
-            final used = _dc.monthExpense.value;
-            final pct = budget > 0 ? used / budget : 0.0;
-            final remaining = budget - used;
-            final ringColor = pct >= 1.0
-                ? Colors.red.shade600
-                : pct >= 0.8
-                    ? Colors.orange.shade700
-                    : cs.primary;
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: _BudgetRing(
-                    progress: pct,
-                    progressColor: ringColor,
-                    trackColor: cs.surfaceContainerHighest,
-                    center: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          budget > 0 ? '${(pct * 100).round()}%' : '--',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: totalCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: '总预算额度 (¥，留空自动按分类之和)',
+                  prefixText: '¥ ',
+                ),
+              ),
+              const SizedBox(height: 6),
+              Center(
+                child: Text('设置后分类预算之和不能超过总预算',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        color:
+                            cs.onSurfaceVariant.withValues(alpha: 0.7))),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: _BudgetRing(
+                  progress: _dc.monthExpense.value /
+                      (_dc.totalBudgetAmount > 0
+                          ? _dc.totalBudgetAmount
+                          : 1),
+                  progressColor: cs.primary,
+                  trackColor: cs.surfaceContainerHighest,
+                  center: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _dc.totalBudgetAmount > 0
+                            ? '${((_dc.monthExpense.value / _dc.totalBudgetAmount) * 100).round()}%'
+                            : '--',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: cs.onSurface),
+                      ),
+                      const SizedBox(height: 2),
+                      Text('已使用',
                           style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: pct >= 1.0
-                                  ? Colors.red.shade600
-                                  : cs.onSurface),
+                              fontSize: 10.5,
+                              color: cs.onSurfaceVariant
+                                  .withValues(alpha: 0.8))),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _labeledDivider('分类预算', cs),
+              const SizedBox(height: 4),
+              if (_dc.budgets.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                    child: Text('尚未设置分类预算，点击下方按钮添加',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant
+                                .withValues(alpha: 0.7))),
+                  ),
+                )
+              else
+                ..._dc.budgets.entries.map((e) {
+                  final used = _dc.categoryExpense[e.key] ?? 0;
+                  final p = e.value > 0 ? (used / e.value) : 0.0;
+                  final cat = _categoryById(e.key);
+                  final name = cat?.name ?? '已删分类';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                                IconUtils.category(cat?.icon ?? ''),
+                                size: 14,
+                                color: cs.onSurfaceVariant),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(name,
+                                  style: const TextStyle(fontSize: 13)),
+                            ),
+                            Text(
+                                '${used.toStringAsFixed(0)} / ${e.value.toStringAsFixed(0)}',
+                                style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: cs.onSurfaceVariant,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures()
+                                    ])),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () => _showBudgetEditDialog(
+                                  existingCatId: e.key,
+                                  existingAmount: e.value),
+                              child: Icon(Icons.edit_rounded,
+                                  size: 16,
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.8)),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () => _dc.setBudgetFor(e.key, 0),
+                              child: Icon(Icons.delete_outline_rounded,
+                                  size: 16,
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.8)),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text('已使用',
-                            style: TextStyle(
-                                fontSize: 10.5,
-                                color: cs.onSurfaceVariant
-                                    .withValues(alpha: 0.8))),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: LinearProgressIndicator(
+                            value: p.clamp(0.0, 1.0),
+                            minHeight: 5,
+                            backgroundColor: cs.surfaceContainerHighest,
+                            valueColor: AlwaysStoppedAnimation(
+                                _budgetBarColor(p)),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
+                  );
+                }),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showBudgetEditDialog(),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('添加分类预算'),
                 ),
-                const SizedBox(height: 14),
-                _budgetStatRow('本月预算',
-                    budget > 0 ? '¥${budget.toStringAsFixed(2)}' : '未设置',
-                    cs.onSurface),
-                _budgetStatRow(
-                    '已使用', '¥${used.toStringAsFixed(2)}', cs.onSurface),
-                _budgetStatRow(
-                    '剩余',
-                    budget > 0
-                        ? (remaining >= 0
-                            ? '¥${remaining.toStringAsFixed(2)}'
-                            : '已超支 ¥${(-remaining).toStringAsFixed(2)}')
-                        : '--',
-                    remaining >= 0 ? cs.primary : Colors.red.shade600),
-                if (pct >= 1.0) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.red.shade200),
-                    ),
-                    child: Text('本月支出已超出预算，注意控制消费哦',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.red.shade700)),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                TextField(
-                  controller: budgetCtrl,
-                  autofocus: budget <= 0,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: '每月预算额度 (¥)',
-                    prefixText: '¥ ',
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Center(
-                  child: Text('预算按自然月统计，每月自动重置使用进度',
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          color:
-                              cs.onSurfaceVariant.withValues(alpha: 0.7))),
-                ),
-              ],
-            );
-          }),
+              ),
+              const SizedBox(height: 4),
+              Center(
+                child: Text('为支出分类设置每月额度，结余卡会显示各分类进度',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        color:
+                            cs.onSurfaceVariant.withValues(alpha: 0.7))),
+              ),
+            ],
+          ),
         ),
         actions: [
-          if (_dc.monthlyBudget.value > 0)
-            TextButton(
-              onPressed: () {
-                _dc.setBudget(0);
-                Get.back();
-                Get.snackbar('已清除', '预算已清除');
-              },
-              child:
-                  const Text('清除预算', style: TextStyle(color: Colors.red)),
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('完成'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 添加/编辑某分类的预算额度
+  void _showBudgetEditDialog(
+      {String? existingCatId, double? existingAmount}) {
+    final cs = Theme.of(context).colorScheme;
+    final expenseCats = StorageService()
+        .categories
+        .where((c) =>
+            c.type == FinanceType.expense &&
+            (existingCatId != null || !_dc.budgets.containsKey(c.id)))
+        .toList();
+    final selCat =
+        (existingCatId ?? (expenseCats.isNotEmpty ? expenseCats.first.id : ''))
+            .obs;
+    final amountCtrl = TextEditingController(
+        text: existingAmount != null && existingAmount > 0
+            ? existingAmount.toStringAsFixed(0)
+            : '');
+
+    Get.dialog(
+      AlertDialog(
+        title: Text(existingCatId == null ? '添加分类预算' : '编辑分类预算'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Obx(() {
+              if (expenseCats.isEmpty) {
+                return Text('所有支出分类都已设置预算',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: cs.onSurfaceVariant
+                            .withValues(alpha: 0.8)));
+              }
+              return DropdownButtonFormField<String>(
+                value: selCat.value,
+                decoration: const InputDecoration(
+                  labelText: '选择支出分类',
+                ),
+                items: expenseCats
+                    .map((c) => DropdownMenuItem<String>(
+                          value: c.id,
+                          child: Row(
+                            children: [
+                              Icon(IconUtils.category(c.icon),
+                                  size: 16,
+                                  color: IconUtils.hex(c.color)),
+                              const SizedBox(width: 8),
+                              Text(c.name,
+                                  style:
+                                      const TextStyle(fontSize: 13)),
+                            ],
+                          ),
+                        ))
+                    .toList(),
+                onChanged: (v) => selCat.value = v ?? '',
+              );
+            }),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amountCtrl,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: '每月额度 (¥)',
+                prefixText: '¥ ',
+              ),
             ),
+          ],
+        ),
+        actions: [
           TextButton(
             onPressed: () => Get.back(),
             child: const Text('取消'),
           ),
           ElevatedButton(
             onPressed: () {
-              final v = double.tryParse(budgetCtrl.text);
+              final catId = existingCatId ?? selCat.value;
+              if (catId.isEmpty) {
+                Get.snackbar('提示', '请选择分类');
+                return;
+              }
+              final v = double.tryParse(amountCtrl.text);
               if (v == null || v <= 0) {
                 Get.snackbar('提示', '请输入有效的预算金额');
                 return;
               }
-              _dc.setBudget(v);
+              _dc.setBudgetFor(catId, v);
               Get.back();
-              Get.snackbar('预算已设置', '每月预算 ¥${v.toStringAsFixed(2)}');
             },
             child: const Text('保存'),
           ),
         ],
       ),
     );
+  }
+
+  /// 预算进度条颜色：随占用率变化（绿 → 橙 → 红）
+  Color _budgetBarColor(double pct) {
+    if (pct >= 1.0) return const Color(0xFFEF9A9A);
+    if (pct >= 0.9) return const Color(0xFFFFCC80);
+    return const Color(0xFFA5D6A7);
+  }
+
+  Category? _categoryById(String id) {
+    for (final c in StorageService().categories) {
+      if (c.id == id) return c;
+    }
+    return null;
   }
 
   Widget _budgetStatRow(String label, String value, Color color) {
@@ -738,70 +896,163 @@ class _HomePageState extends State<HomePage>
                 ],
               ],
             ),
-            if (_dc.monthlyBudget.value > 0) ...[
+            if (_dc.budgets.isNotEmpty || _dc.totalBudget.value > 0) ...[
               const SizedBox(height: 12),
               Container(height: 1, color: onPrimary.withValues(alpha: 0.18)),
               const SizedBox(height: 12),
-              // 预算使用进度条：中间显示百分比，下方居中显示“当月使用/预算”
+              // 分段式预算条：每个分类占一段（宽度=预算占比），
+              // 段内按使用率以分类色填充；仅设总预算时为单一进度段；
+              // 点击打开预算管理
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _showBudgetDialog,
                 child: Obx(() {
-                  final budget = _dc.monthlyBudget.value;
-                  final used = _dc.monthExpense.value;
-                  final pct = budget > 0 ? used / budget : 0.0;
-                  final barColor = pct >= 1.0
-                      ? Colors.red.shade300
-                      : pct >= 0.8
-                          ? Colors.amber.shade300
-                          : onPrimary;
+                  final hasTotal = _dc.totalBudget.value > 0;
+                  final segments = <(Color, double, double, String)>[];
+                  for (final e in _dc.budgets.entries) {
+                    final cat = _categoryById(e.key);
+                    segments.add((
+                      cat != null
+                          ? IconUtils.hex(cat.color)
+                          : onPrimary.withValues(alpha: 0.6),
+                      e.value,
+                      _dc.categoryExpense[e.key] ?? 0,
+                      cat?.name ?? '已删分类',
+                    ));
+                  }
+                  // 已设总预算且有分类段时：剩余额度作为"其他"段
+                  if (hasTotal && segments.isNotEmpty) {
+                    final allocated =
+                        segments.fold(0.0, (s, e) => s + e.$2);
+                    final used = segments.fold(0.0, (s, e) => s + e.$3);
+                    if (_dc.totalBudget.value > allocated) {
+                      segments.add((
+                        onPrimary.withValues(alpha: 0.45),
+                        _dc.totalBudget.value - allocated,
+                        (_dc.monthExpense.value - used)
+                            .clamp(0.0, double.infinity),
+                        '其他',
+                      ));
+                    }
+                  }
+                  // 仅设置总预算时：整条为单一"总预算"段
+                  if (hasTotal && segments.isEmpty) {
+                    segments.add((
+                      onPrimary.withValues(alpha: 0.55),
+                      _dc.totalBudget.value,
+                      _dc.monthExpense.value,
+                      '总预算',
+                    ));
+                  }
+                  final totalBudget = hasTotal
+                      ? _dc.totalBudget.value
+                      : segments.fold(0.0, (s, e) => s + e.$2);
+                  final totalUsed = hasTotal
+                      ? _dc.monthExpense.value
+                      : segments.fold(0.0, (s, e) => s + e.$3);
+                  final pct = totalBudget > 0
+                      ? (totalUsed / totalBudget)
+                      : 0.0;
+                  final hasCats = _dc.budgets.isNotEmpty;
+                  final totalPct = totalBudget > 0
+                      ? ((totalUsed / totalBudget) * 100).toStringAsFixed(0)
+                      : '0';
                   return Column(
                     children: [
-                      SizedBox(
-                        height: 18,
-                        child: Stack(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: onPrimary.withValues(alpha: 0.16),
-                                borderRadius: BorderRadius.circular(9),
+                      Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(9),
+                            child: SizedBox(
+                              height: 18,
+                              child: Row(
+                                children: [
+                                  for (final seg in segments)
+                                    Expanded(
+                                      flex: (seg.$2 * 1000)
+                                          .round()
+                                          .clamp(1, 1 << 30),
+                                      child: Stack(
+                                        children: [
+                                          Container(
+                                            color: onPrimary
+                                                .withValues(alpha: 0.16),
+                                          ),
+                                          FractionallySizedBox(
+                                            alignment: Alignment.centerLeft,
+                                            widthFactor: (seg.$3 / seg.$2)
+                                                .clamp(0.0, 1.0),
+                                            child: Container(color: seg.$1),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
-                            FractionallySizedBox(
-                              alignment: Alignment.centerLeft,
-                              widthFactor: pct.clamp(0.0, 1.0),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: barColor,
-                                  borderRadius: BorderRadius.circular(9),
+                          ),
+                          Positioned.fill(
+                            child: Center(
+                              child: Text(
+                                '已使用 ${(pct * 100).round()}%',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: onPrimary),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // 图例：总预算信息 + 各分段（名称 占比 已用/预算）
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 4,
+                        children: [
+                          if (hasCats)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(
+                                      color: onPrimary
+                                          .withValues(alpha: 0.9),
+                                      shape: BoxShape.circle),
                                 ),
-                              ),
-                            ),
-                            Positioned.fill(
-                              child: Center(
-                                child: Text(
-                                  '已使用 ${(pct * 100).round()}%',
+                                const SizedBox(width: 4),
+                                Text(
+                                  '总预算 $totalPct% · ¥${totalUsed.toStringAsFixed(0)}/¥${totalBudget.toStringAsFixed(0)}',
                                   style: TextStyle(
-                                      fontSize: 11,
+                                      fontSize: 10,
                                       fontWeight: FontWeight.w600,
                                       color: onPrimary),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Center(
-                        child: Text(
-                          '¥${used.toStringAsFixed(2)} / ¥${budget.toStringAsFixed(2)}',
-                          style: TextStyle(
-                              fontSize: 10.5,
-                              color: onPrimary.withValues(alpha: 0.75),
-                              fontFeatures: const [
-                                FontFeature.tabularFigures()
-                              ]),
-                        ),
+                          for (final seg in segments)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(
+                                      color: seg.$1, shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${seg.$4} ${(seg.$3 / seg.$2 * 100).toStringAsFixed(0)}% · ¥${seg.$3.toStringAsFixed(0)}/¥${seg.$2.toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: onPrimary
+                                          .withValues(alpha: 0.85)),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
                     ],
                   );

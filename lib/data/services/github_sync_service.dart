@@ -51,8 +51,8 @@ class GithubSyncService {
   }
 
   /// 清洗 Token：去除所有空白、零宽字符与 BOM（手机粘贴常见污染源）
-  static String sanitizeToken(String token) => token
-      .replaceAll(RegExp(r'[\s\uFEFF\u200B\u200C\u200D\u2060]'), '');
+  static String sanitizeToken(String token) =>
+      token.replaceAll(RegExp(r'[\s\uFEFF\u200B\u200C\u200D\u2060]'), '');
 
   /// 校验 Token 是否合法（本地格式校验）
   static bool isValidTokenFormat(String token) {
@@ -132,8 +132,8 @@ class GithubSyncService {
     return shas;
   }
 
-  Future<void> _putFile(String repo, String token, String name,
-      String content, Map<String, String> shas, String commitMsg) async {
+  Future<void> _putFile(String repo, String token, String name, String content,
+      Map<String, String> shas, String commitMsg) async {
     final res = await _send(() => http.put(
           _fileUri(repo, name),
           headers: _headers(token),
@@ -155,8 +155,8 @@ class GithubSyncService {
     if (res.statusCode != 200) throw _errorFor(res.statusCode);
     final body = json.decode(res.body);
     if (body is! Map<String, dynamic> || body['content'] == null) return null;
-    return utf8.decode(
-        base64Decode((body['content'] as String).replaceAll('\n', '')));
+    return utf8
+        .decode(base64Decode((body['content'] as String).replaceAll('\n', '')));
   }
 
   /// 分片备份到 GitHub：
@@ -187,6 +187,8 @@ class GithubSyncService {
         'timerTags': _storage.timerTags.map((e) => e.toJson()).toList(),
         'invoiceProfiles':
             _storage.invoiceProfiles.map((e) => e.toJson()).toList(),
+        'budgets': _storage.getConfig('budgets') ?? {},
+        'totalBudget': _storage.getConfig('total_budget') ?? 0,
       },
     });
 
@@ -220,8 +222,7 @@ class GithubSyncService {
     if (index is! Map<String, dynamic>) {
       throw GithubSyncException('云端备份索引异常，无法恢复');
     }
-    final years =
-        (index['years'] as List?)?.whereType<int>() ?? const <int>[];
+    final years = (index['years'] as List?)?.whereType<int>() ?? const <int>[];
     final global = index['global'] is Map<String, dynamic>
         ? index['global'] as Map<String, dynamic>
         : <String, dynamic>{};
@@ -256,6 +257,8 @@ class GithubSyncService {
       'accounts': global['accounts'] ?? [],
       'timerTags': global['timerTags'] ?? [],
       'invoiceProfiles': global['invoiceProfiles'] ?? [],
+      'budgets': global['budgets'] ?? {},
+      'totalBudget': global['totalBudget'] ?? 0,
     };
   }
 

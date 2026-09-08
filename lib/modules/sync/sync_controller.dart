@@ -171,6 +171,19 @@ class SyncController extends GetxController with WidgetsBindingObserver {
         invoiceProfiles:
             _parseList(data['invoiceProfiles'], InvoiceProfile.fromJson),
       );
+      // 恢复预算配置
+      try {
+        final dc = Get.find<DashboardController>();
+        final bMap = <String, double>{};
+        if (data['budgets'] is Map) {
+          (data['budgets'] as Map).forEach((k, v) {
+            final d = double.tryParse('$v');
+            if (d != null && d > 0) bMap['$k'] = d;
+          });
+        }
+        dc.restoreBudgets(
+            bMap, double.tryParse('${data['totalBudget'] ?? 0}') ?? 0);
+      } catch (_) {}
       _refreshAllControllers();
       refreshStats();
       Get.snackbar('恢复完成', '已从云端恢复 ${totalEntries.value} 条记录');
