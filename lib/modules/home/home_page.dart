@@ -467,22 +467,27 @@ class _HomePageState extends State<HomePage>
           : '',
     );
 
-    Future<void> saveTotal() async {
-      final v = double.tryParse(totalCtrl.text.trim());
-      if (v != null && v < _dc.allocatedBudget) {
-        Get.snackbar('无法保存',
-            '总预算（¥${v.toStringAsFixed(2)}）不能低于分类预算之和（¥${_dc.allocatedBudget.toStringAsFixed(2)}）');
-        return;
+    // 返回 null 表示成功；否则返回错误提示（不弹 snackbar）
+    String? applyTotal() {
+      final raw = totalCtrl.text.trim();
+      final v = raw.isEmpty ? 0.0 : double.tryParse(raw);
+      if (v == null) {
+        return '请输入有效的总预算金额';
       }
-      _dc.setTotalBudget(v ?? 0);
-      Get.snackbar(v != null && v > 0 ? '总预算已设置' : '已清除',
-          v != null && v > 0 ? '总预算 ¥${v.toStringAsFixed(2)}' : '将自动按分类预算之和计算');
+      if (v > 0 && v < _dc.allocatedBudget) {
+        return '总预算（¥${v.toStringAsFixed(2)}）不能低于分类预算之和（¥${_dc.allocatedBudget.toStringAsFixed(2)}）';
+      }
+      _dc.setTotalBudget(v);
+      return null;
     }
+
+    var closing = false;
 
     Get.dialog(
       AlertDialog(
         title: const Text('本月预算'),
-        content: SingleChildScrollView(
+        content: Obx(
+          () => SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,6 +496,11 @@ class _HomePageState extends State<HomePage>
                 controller: totalCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) {
+                  final err = applyTotal();
+                  if (err != null) Get.snackbar('无法保存', err);
+                },
                 decoration: const InputDecoration(
                   labelText: '总预算额度 (¥，留空自动按分类之和)',
                   prefixText: '¥ ',
@@ -506,33 +516,42 @@ class _HomePageState extends State<HomePage>
               ),
               const SizedBox(height: 12),
               Center(
-                child: _BudgetRing(
-                  progress: _dc.monthExpense.value /
-                      (_dc.totalBudgetAmount > 0
-                          ? _dc.totalBudgetAmount
-                          : 1),
-                  progressColor: cs.primary,
-                  trackColor: cs.surfaceContainerHighest,
-                  center: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _dc.totalBudgetAmount > 0
-                            ? '${((_dc.monthExpense.value / _dc.totalBudgetAmount) * 100).round()}%'
-                            : '--',
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: cs.onSurface),
+                child: AnimatedBuilder(
+                  animation: totalCtrl,
+                  builder: (context, _) {
+                    final typed = double.tryParse(totalCtrl.text.trim());
+                    final preview = (typed != null && typed > 0)
+                        ? typed
+                        : _dc.totalBudgetAmount;
+                    final ratio = preview > 0
+                        ? _dc.monthExpense.value / preview
+                        : 0.0;
+                    return _BudgetRing(
+                      progress: ratio,
+                      progressColor: cs.primary,
+                      trackColor: cs.surfaceContainerHighest,
+                      center: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            preview > 0
+                                ? '${(ratio * 100).round()}%'
+                                : '--',
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: cs.onSurface),
+                          ),
+                          const SizedBox(height: 2),
+                          Text('已使用',
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.8))),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text('已使用',
-                          style: TextStyle(
-                              fontSize: 10.5,
-                              color: cs.onSurfaceVariant
-                                  .withValues(alpha: 0.8))),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 14),
@@ -633,10 +652,21 @@ class _HomePageState extends State<HomePage>
               ),
             ],
           ),
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () {
+              if (closing) return;
+              final err = applyTotal();
+              if (err != null) {
+                Get.snackbar('无法保存', err);
+                return;
+              }
+              closing = true;
+              Get.closeCurrentSnackbar();
+              Get.back();
+            },
             child: const Text('完成'),
           ),
         ],
@@ -730,7 +760,18 @@ class _HomePageState extends State<HomePage>
                 Get.snackbar('提示', '请输入有效的预算金额');
                 return;
               }
+              final others = _dc.allocatedBudget -
+                  (existingCatId != null
+                      ? (_dc.budgets[existingCatId] ?? 0)
+                      : 0);
+              if (_dc.totalBudget.value > 0 &&
+                  others + v > _dc.totalBudget.value) {
+                Get.snackbar('无法保存',
+                    '分类预算之和（¥${(others + v).toStringAsFixed(2)}）不能超过总预算（¥${_dc.totalBudget.value.toStringAsFixed(2)}）');
+                return;
+              }
               _dc.setBudgetFor(catId, v);
+              Get.closeCurrentSnackbar();
               Get.back();
             },
             child: const Text('保存'),
