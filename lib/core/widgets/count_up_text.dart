@@ -8,6 +8,8 @@ class CountUpText extends StatefulWidget {
   final TextStyle style;
   final Duration duration;
   final String Function(double value) formatter;
+  final int? maxLines;
+  final TextOverflow? overflow;
 
   const CountUpText({
     super.key,
@@ -16,6 +18,8 @@ class CountUpText extends StatefulWidget {
     this.restartKey = 0,
     this.style = const TextStyle(),
     this.duration = const Duration(milliseconds: 650),
+    this.maxLines,
+    this.overflow,
   });
 
   @override
@@ -68,6 +72,8 @@ class _CountUpTextState extends State<CountUpText>
         return Text(
           widget.formatter(_current),
           style: widget.style,
+          maxLines: widget.maxLines,
+          overflow: widget.overflow,
         );
       },
     );

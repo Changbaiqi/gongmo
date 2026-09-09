@@ -621,12 +621,19 @@ class _HomePageState extends State<HomePage>
                         const SizedBox(height: 4),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(3),
-                          child: LinearProgressIndicator(
-                            value: p.clamp(0.0, 1.0),
-                            minHeight: 5,
-                            backgroundColor: cs.surfaceContainerHighest,
-                            valueColor: AlwaysStoppedAnimation(
-                                _budgetBarColor(p)),
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween(
+                                begin: 0, end: p.clamp(0.0, 1.0)),
+                            duration: const Duration(milliseconds: 600),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, value, _) =>
+                                LinearProgressIndicator(
+                              value: value,
+                              minHeight: 5,
+                              backgroundColor: cs.surfaceContainerHighest,
+                              valueColor: AlwaysStoppedAnimation(
+                                  _budgetBarColor(p)),
+                            ),
                           ),
                         ),
                       ],
@@ -1019,11 +1026,22 @@ class _HomePageState extends State<HomePage>
                                             color: onPrimary
                                                 .withValues(alpha: 0.16),
                                           ),
-                                          FractionallySizedBox(
-                                            alignment: Alignment.centerLeft,
-                                            widthFactor: (seg.$3 / seg.$2)
-                                                .clamp(0.0, 1.0),
-                                            child: Container(color: seg.$1),
+                                          TweenAnimationBuilder<double>(
+                                            tween: Tween(
+                                                begin: 0,
+                                                end: (seg.$3 / seg.$2)
+                                                    .clamp(0.0, 1.0)),
+                                            duration: const Duration(
+                                                milliseconds: 700),
+                                            curve: Curves.easeOutCubic,
+                                            builder: (context, value, _) =>
+                                                FractionallySizedBox(
+                                              alignment:
+                                                  Alignment.centerLeft,
+                                              widthFactor: value,
+                                              child:
+                                                  Container(color: seg.$1),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -1034,12 +1052,18 @@ class _HomePageState extends State<HomePage>
                           ),
                           Positioned.fill(
                             child: Center(
-                              child: Text(
-                                '已使用 ${(pct * 100).round()}%',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: onPrimary),
+                              child: TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0, end: pct),
+                                duration:
+                                    const Duration(milliseconds: 700),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, value, _) => Text(
+                                  '已使用 ${(value * 100).round()}%',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: onPrimary),
+                                ),
                               ),
                             ),
                           ),
@@ -1181,54 +1205,75 @@ class _HomePageState extends State<HomePage>
   Widget _buildActiveTimerBanner() {
     final cs = Theme.of(context).colorScheme;
     return Obx(() {
-      if (!_dc.hasActiveTimer.value) return const SizedBox.shrink();
       final entry = _dc.activeTimerEntry.value;
-      if (entry == null) return const SizedBox.shrink();
-      // 依赖每秒跳动的 todayWorkDuration，让横幅实时刷新
-      _dc.todayWorkDuration.value;
-      final elapsed = DateHelper.formatDurationShort(entry.liveElapsed);
-      return Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: cs.tertiaryContainer.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(14),
+      final active = _dc.hasActiveTimer.value && entry != null;
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 280),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(-0.06, 0),
+              end: Offset.zero,
+            ).animate(anim),
+            child: child,
+          ),
         ),
-        child: Row(
-          children: [
-            Icon(Icons.timer_rounded, color: cs.tertiary, size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('计时中 · ${entry.projectName}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 13)),
-                  Text(elapsed,
-                      style: TextStyle(
-                          color: cs.tertiary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          fontFeatures: const [FontFeature.tabularFigures()])),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: () => _confirmStopActiveTimer(entry),
-              style: TextButton.styleFrom(
-                foregroundColor: cs.error,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text('停止', style: TextStyle(fontSize: 13)),
-            ),
-          ],
-        ),
+        child: active
+            ? _activeTimerBannerContent(cs, entry)
+            : const SizedBox.shrink(key: ValueKey('no_timer')),
       );
     });
+  }
+
+  Widget _activeTimerBannerContent(ColorScheme cs, WorkEntry entry) {
+    // 依赖每秒跳动的 todayWorkDuration，让横幅实时刷新
+    _dc.todayWorkDuration.value;
+    final elapsed = DateHelper.formatDurationShort(entry.liveElapsed);
+    return Container(
+      key: const ValueKey('active_timer'),
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.tertiaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.timer_rounded, color: cs.tertiary, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('计时中 · ${entry.projectName}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(elapsed,
+                    style: TextStyle(
+                        color: cs.tertiary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => _confirmStopActiveTimer(entry),
+            style: TextButton.styleFrom(
+              foregroundColor: cs.error,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('停止', style: TextStyle(fontSize: 13)),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 横幅"停止"按钮：二次确认后结束打卡或计时
@@ -1274,11 +1319,15 @@ class _HomePageState extends State<HomePage>
               .toList();
 
       if (entries.isEmpty) {
-        return _buildEmptyState(
-          icon: Icons.receipt_long_outlined,
-          message: month == null
-              ? '还没有账目，点击 + 记一笔吧'
-              : '${month.year}年${month.month}月暂无账目',
+        return _StaggeredEntrance(
+          key: ValueKey('empty_${month?.year}_${month?.month}'),
+          index: 0,
+          child: _buildEmptyState(
+            icon: Icons.receipt_long_outlined,
+            message: month == null
+                ? '还没有账目，点击 + 记一笔吧'
+                : '${month.year}年${month.month}月暂无账目',
+          ),
         );
       }
 
@@ -1293,11 +1342,21 @@ class _HomePageState extends State<HomePage>
         groups[key]!.add(e);
       }
 
+      var animIndex = 0;
       return Column(
         children: [
           for (final key in order) ...[
-            _buildDayHeader(groups[key]!),
-            ...groups[key]!.map((entry) => _buildFinanceItemCard(fc, entry)),
+            _StaggeredEntrance(
+              key: ValueKey('h_$key'),
+              index: animIndex++,
+              child: _buildDayHeader(groups[key]!),
+            ),
+            for (final entry in groups[key]!)
+              _StaggeredEntrance(
+                key: ValueKey('e_${entry.id}'),
+                index: animIndex++,
+                child: _buildFinanceItemCard(fc, entry),
+              ),
           ],
         ],
       );
@@ -2403,6 +2462,49 @@ class _HomePageState extends State<HomePage>
   }
 }
 /// 预算圆环：显示使用进度
+/// 首次出现时从左滑入并淡入（按 index 交错延迟）
+class _StaggeredEntrance extends StatefulWidget {
+  const _StaggeredEntrance({
+    super.key,
+    required this.index,
+    required this.child,
+  });
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_StaggeredEntrance> createState() => _StaggeredEntranceState();
+}
+
+class _StaggeredEntranceState extends State<_StaggeredEntrance> {
+  bool _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final delay = Duration(milliseconds: 45 * widget.index.clamp(0, 10));
+    Future.delayed(delay, () {
+      if (mounted) setState(() => _shown = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSlide(
+      offset: _shown ? Offset.zero : const Offset(-0.08, 0),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      child: AnimatedOpacity(
+        opacity: _shown ? 1 : 0,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 class _BudgetRing extends StatelessWidget {
   final double progress; // 0..1（可超过 1，绘制时截断）
   final Color progressColor;

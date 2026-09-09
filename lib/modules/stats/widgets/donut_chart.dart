@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../stats_controller.dart';
 
-class DonutChart extends StatelessWidget {
+class DonutChart extends StatefulWidget {
   final List<CategorySlice> slices;
   final double total;
   final String centerLabel;
@@ -18,12 +18,45 @@ class DonutChart extends StatelessWidget {
     this.formatAmount,
   });
 
+  @override
+  State<DonutChart> createState() => _DonutChartState();
+}
+
+class _DonutChartState extends State<DonutChart>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _reveal.forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant DonutChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.slices != widget.slices || oldWidget.total != widget.total) {
+      _reveal.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _reveal.dispose();
+    super.dispose();
+  }
+
   String _fmt(double v) =>
-      formatAmount?.call(v) ?? '¥${_formatAmount(v)}';
+      widget.formatAmount?.call(v) ?? '¥${_formatAmount(v)}';
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final slices = widget.slices;
+    final total = widget.total;
     return Column(
       children: [
         SizedBox(
@@ -34,12 +67,16 @@ class DonutChart extends StatelessWidget {
             children: [
               CustomPaint(
                 size: const Size(170, 170),
-                painter: _DonutPainter(slices: slices, total: total),
+                painter: _DonutPainter(
+                  slices: slices,
+                  total: total,
+                  reveal: _reveal,
+                ),
               ),
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(centerLabel,
+                  Text(widget.centerLabel,
                       style: TextStyle(
                           fontSize: 11,
                           color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
@@ -91,7 +128,7 @@ class DonutChart extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(
-              '其余 ${slices.length - 6} 个分类合计 ${_fmt(_restAmount())}',
+              '其余 ${slices.length - 6} 个分类合计 ${_fmt(_restAmount(slices))}',
               style: TextStyle(
                   fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
             ),
@@ -100,7 +137,7 @@ class DonutChart extends StatelessWidget {
     );
   }
 
-  double _restAmount() {
+  double _restAmount(List<CategorySlice> slices) {
     var sum = 0.0;
     for (var i = 6; i < slices.length; i++) {
       sum += slices[i].amount;
@@ -117,8 +154,13 @@ class DonutChart extends StatelessWidget {
 class _DonutPainter extends CustomPainter {
   final List<CategorySlice> slices;
   final double total;
+  final Animation<double> reveal;
 
-  _DonutPainter({required this.slices, required this.total});
+  _DonutPainter({
+    required this.slices,
+    required this.total,
+    required this.reveal,
+  }) : super(repaint: reveal);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -135,17 +177,28 @@ class _DonutPainter extends CustomPainter {
       return;
     }
 
+    // 按进度从起始角顺时针逐渐展开
+    final revealAngle = reveal.value * 2 * math.pi;
     var start = -math.pi / 2;
+    var consumed = 0.0;
     final gap = slices.length > 1 ? 0.02 : 0.0;
     for (final s in slices) {
-      final sweep = math.max(0.01, s.amount / total * 2 * math.pi - gap);
-      paint.color = s.color;
-      canvas.drawArc(rect, start, sweep, false, paint);
-      start += s.amount / total * 2 * math.pi;
+      final full = s.amount / total * 2 * math.pi;
+      final segSweep = math.max(0.01, full - gap);
+      final visible = (revealAngle - consumed).clamp(0.0, segSweep);
+      if (visible > 0) {
+        paint.color = s.color;
+        canvas.drawArc(rect, start, visible, false, paint);
+      }
+      start += full;
+      consumed += full;
+      if (consumed >= revealAngle) break;
     }
   }
 
   @override
   bool shouldRepaint(covariant _DonutPainter oldDelegate) =>
-      oldDelegate.slices != slices || oldDelegate.total != total;
+      oldDelegate.slices != slices ||
+      oldDelegate.total != total ||
+      oldDelegate.reveal.value != reveal.value;
 }

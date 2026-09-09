@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'stats_controller.dart';
 import 'widgets/trend_chart.dart';
 import 'widgets/donut_chart.dart';
+import '../../core/widgets/count_up_text.dart';
 
 class StatsView extends StatefulWidget {
   const StatsView({super.key});
@@ -30,19 +31,45 @@ class _StatsViewState extends State<StatsView> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _buildPeriodToggle(cs),
+              _SectionEntrance(
+                  key: const ValueKey('s_toggle'),
+                  index: 0,
+                  child: _buildPeriodToggle(cs)),
               const SizedBox(height: 10),
-              _buildRangeBar(cs),
+              _SectionEntrance(
+                  key: const ValueKey('s_range'),
+                  index: 1,
+                  child: _buildRangeBar(cs)),
               const SizedBox(height: 12),
-              _buildSummaryCard(cs),
+              _SectionEntrance(
+                  key: const ValueKey('s_summary'),
+                  index: 2,
+                  child: _buildSummaryCard(cs)),
               const SizedBox(height: 12),
-              _buildTrendCard(cs),
+              _SectionEntrance(
+                  key: const ValueKey('s_trend'),
+                  index: 3,
+                  child: _buildTrendCard(cs)),
               const SizedBox(height: 12),
-              _buildCategoryCard(cs, '支出构成', _ctrl.expenseSlices.toList(),
-                  _ctrl.expense.value, '总支出'),
+              _SectionEntrance(
+                  key: const ValueKey('s_expense'),
+                  index: 4,
+                  child: _buildCategoryCard(
+                      cs,
+                      '支出构成',
+                      _ctrl.expenseSlices.toList(),
+                      _ctrl.expense.value,
+                      '总支出')),
               const SizedBox(height: 12),
-              _buildCategoryCard(cs, '收入构成', _ctrl.incomeSlices.toList(),
-                  _ctrl.income.value, '总收入'),
+              _SectionEntrance(
+                  key: const ValueKey('s_income'),
+                  index: 5,
+                  child: _buildCategoryCard(
+                      cs,
+                      '收入构成',
+                      _ctrl.incomeSlices.toList(),
+                      _ctrl.income.value,
+                      '总收入')),
               const SizedBox(height: 8),
             ],
           ),
@@ -163,8 +190,9 @@ class _StatsViewState extends State<StatsView> {
                       .onSurfaceVariant
                       .withValues(alpha: 0.8))),
           const SizedBox(height: 4),
-          Text(
-            '¥${value.toStringAsFixed(2)}',
+          CountUpText(
+            value: value,
+            formatter: (v) => '¥${v.toStringAsFixed(2)}',
             style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
@@ -273,6 +301,49 @@ class _StatsViewState extends State<StatsView> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 首次出现时从左滑入并淡入（按 index 交错延迟）
+class _SectionEntrance extends StatefulWidget {
+  const _SectionEntrance({
+    super.key,
+    required this.index,
+    required this.child,
+  });
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_SectionEntrance> createState() => _SectionEntranceState();
+}
+
+class _SectionEntranceState extends State<_SectionEntrance> {
+  bool _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final delay = Duration(milliseconds: 55 * widget.index.clamp(0, 8));
+    Future.delayed(delay, () {
+      if (mounted) setState(() => _shown = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSlide(
+      offset: _shown ? Offset.zero : const Offset(-0.06, 0),
+      duration: const Duration(milliseconds: 340),
+      curve: Curves.easeOutCubic,
+      child: AnimatedOpacity(
+        opacity: _shown ? 1 : 0,
+        duration: const Duration(milliseconds: 340),
+        curve: Curves.easeOut,
+        child: widget.child,
       ),
     );
   }
