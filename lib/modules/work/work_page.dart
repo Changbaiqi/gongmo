@@ -752,11 +752,14 @@ class _WorkPageState extends State<WorkPage> {
             },
             child: Obx(() => Opacity(
                   opacity: _ctrl.isPaused.value ? 0.55 : 1,
-                  child: FlipClock.elapsed(
-                    elapsed: Duration(seconds: _ctrl.elapsedSeconds.value),
-                    digitWidth: 52,
-                    digitHeight: 76,
-                    fontSize: 42,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: FlipClock.elapsed(
+                      elapsed: Duration(seconds: _ctrl.elapsedSeconds.value),
+                      digitWidth: 52,
+                      digitHeight: 76,
+                      fontSize: 42,
+                    ),
                   ),
                 )),
           ),
@@ -905,7 +908,10 @@ class _WorkPageState extends State<WorkPage> {
   // ---------------- 打卡视图 ----------------
 
   Widget _bigClock() {
-    return FlipClock(time: _now);
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: FlipClock(time: _now),
+    );
   }
 
   /// 上下班打卡按钮：上班跟随所选标签色，下班用主题错误色，风格与全页一致
