@@ -1,4 +1,7 @@
 class AppRoutes {
+  static const String splash = '/splash';
+  static const String lock = '/lock';
+  static const String patternSetup = '/pattern-setup';
   static const String dashboard = '/';
   static const String work = '/work';
   static const String finance = '/finance';

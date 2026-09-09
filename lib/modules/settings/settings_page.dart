@@ -9,6 +9,8 @@ import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
 import '../../data/services/github_sync_service.dart';
+import '../lock/lock_controller.dart';
+import '../lock/pattern_setup_page.dart';
 import 'settings_controller.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -80,9 +82,12 @@ class SettingsPage extends StatelessWidget {
             ),
           )),
           const SizedBox(height: 24),
-          _Entrance(index: 6, child: _buildSectionTitle('关于')),
+          _Entrance(index: 6, child: _buildSectionTitle('安全')),
+          _Entrance(index: 7, child: _buildSecurityCard(context)),
+          const SizedBox(height: 24),
+          _Entrance(index: 8, child: _buildSectionTitle('关于')),
           _Entrance(
-              index: 7,
+              index: 9,
               child: Card(
             child: Column(
               children: [
@@ -128,6 +133,70 @@ class SettingsPage extends StatelessWidget {
           fontSize: 13,
         ),
       ),
+    );
+  }
+
+  /// 安全：应用锁（图案密码 + 生物识别）
+  Widget _buildSecurityCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final lock = Get.find<LockController>();
+    return Card(
+      child: Obx(() => Column(
+            children: [
+              SwitchListTile(
+                secondary:
+                    Icon(Icons.lock_outline_rounded, color: cs.primary),
+                title: const Text('应用锁'),
+                subtitle: Text(
+                  lock.hasPattern.value
+                      ? '启动或回到应用时需验证身份'
+                      : '开启前需先设置解锁图案',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+                value: lock.enabled.value,
+                onChanged: (v) async {
+                  if (v) {
+                    if (!lock.hasPattern.value) {
+                      final ok =
+                          await Get.to(() => const PatternSetupPage());
+                      if (ok != true) return;
+                    }
+                    await lock.setEnabled(true);
+                    Get.snackbar('已开启应用锁', '下次启动或回到应用时需解锁');
+                  } else {
+                    await lock.setEnabled(false);
+                  }
+                },
+              ),
+              if (lock.enabled.value && lock.biometricAvailable.value) ...[
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary:
+                      Icon(Icons.fingerprint_rounded, color: cs.primary),
+                  title: const Text('指纹/生物识别解锁'),
+                  subtitle: Text('使用系统指纹或面容快速解锁',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color:
+                              cs.onSurfaceVariant.withValues(alpha: 0.8))),
+                  value: lock.biometricEnabled.value,
+                  onChanged: (v) => lock.setBiometricEnabled(v),
+                ),
+              ],
+              if (lock.hasPattern.value) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading:
+                      Icon(Icons.grid_view_rounded, color: cs.primary),
+                  title: const Text('修改解锁图案'),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () => Get.to(() => const PatternSetupPage()),
+                ),
+              ],
+            ],
+          )),
     );
   }
 

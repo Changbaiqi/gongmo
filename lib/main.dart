@@ -10,6 +10,7 @@ import 'app/theme/app_theme.dart';
 import 'app/theme/theme_controller.dart';
 import 'data/services/auto_bookkeeping_service.dart';
 import 'data/services/storage_service.dart';
+import 'modules/lock/lock_controller.dart';
 import 'modules/sync/sync_controller.dart';
 
 void main() async {
@@ -32,14 +33,52 @@ void main() async {
   // 启动时处理自动记账队列（后台引擎在 App 关闭期间捕获的收支）
   await AutoBookkeepingService.instance.processQueue();
   Get.put(ThemeController());
+  final lock = Get.put(LockController(), permanent: true); // 应用锁（图案/指纹）
+  await lock.init();
   Get.put(SyncController()); // 注册自动同步引擎
   AutoBookkeepingService.instance.startIfNeeded(); // 若开关开启则启动监听服务
 
   runApp(const GongMoApp());
 }
 
-class GongMoApp extends StatelessWidget {
+class GongMoApp extends StatefulWidget {
   const GongMoApp({super.key});
+
+  @override
+  State<GongMoApp> createState() => _GongMoAppState();
+}
+
+class _GongMoAppState extends State<GongMoApp> with WidgetsBindingObserver {
+  DateTime? _pausedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _pausedAt ??= DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final pausedAt = _pausedAt;
+      _pausedAt = null;
+      if (pausedAt == null) return;
+      final lock = Get.find<LockController>();
+      if (!lock.needsRelock) return;
+      final route = Get.currentRoute;
+      if (route == AppRoutes.lock || route == AppRoutes.splash) return;
+      Get.toNamed(AppRoutes.lock);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +110,7 @@ class GongMoApp extends StatelessWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        initialRoute: AppRoutes.dashboard,
+        initialRoute: AppRoutes.splash,
         getPages: AppPages.routes,
         builder: useBackground
             ? (context, child) => _AppBackground(

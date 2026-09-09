@@ -42,6 +42,8 @@ dependencies:
   wakelock_plus: ^1.5.2
   url_launcher: ^6.3.2
   flutter_notification_listener: ^1.4.0
+  local_auth: ^2.3.0
+  crypto: ^3.0.6
   flutter_localizations:
     sdk: flutter
 
@@ -61,6 +63,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/images/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

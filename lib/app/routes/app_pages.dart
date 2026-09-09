@@ -1,8 +1,11 @@
 import 'package:get/get.dart';
 import '../../modules/home/home_page.dart';
+import '../../modules/lock/lock_page.dart';
+import '../../modules/lock/pattern_setup_page.dart';
 import '../../modules/more/exchange_rate_page.dart';
 import '../../modules/more/invoice_page.dart';
 import '../../modules/more/more_page.dart';
+import '../../modules/splash/splash_page.dart';
 import '../../modules/work/work_page.dart';
 import '../../modules/finance/finance_page.dart';
 import '../../modules/sync/sync_page.dart';
@@ -11,6 +14,20 @@ import 'app_routes.dart';
 
 class AppPages {
   static final routes = [
+    GetPage(
+      name: AppRoutes.splash,
+      page: () => const SplashPage(),
+      transition: Transition.fadeIn,
+    ),
+    GetPage(
+      name: AppRoutes.lock,
+      page: () => const LockPage(),
+      transition: Transition.fadeIn,
+    ),
+    GetPage(
+      name: AppRoutes.patternSetup,
+      page: () => const PatternSetupPage(),
+    ),
     GetPage(
       name: AppRoutes.dashboard,
       page: () => const HomePage(),
