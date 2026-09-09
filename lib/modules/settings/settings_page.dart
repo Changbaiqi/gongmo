@@ -164,7 +164,16 @@ class SettingsPage extends StatelessWidget {
                       if (ok != true) return;
                     }
                     await lock.setEnabled(true);
-                    Get.snackbar('已开启应用锁', '下次启动或回到应用时需解锁');
+                    // 设备支持时默认同时开启指纹解锁
+                    if (lock.biometricAvailable.value &&
+                        !lock.biometricEnabled.value) {
+                      await lock.setBiometricEnabled(true);
+                    }
+                    Get.snackbar(
+                        '已开启应用锁',
+                        lock.biometricEnabled.value
+                            ? '下次启动或回到应用时可用指纹快速解锁'
+                            : '下次启动或回到应用时需解锁');
                   } else {
                     await lock.setEnabled(false);
                   }

@@ -24,18 +24,25 @@ class _LockPageState extends State<LockPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _tryBiometric());
+    // 稍作延迟，等 Activity 完全就绪后再唤起指纹（部分机型过早调用会失败）
+    Future.delayed(const Duration(milliseconds: 350), () {
+      if (mounted) _tryBiometric();
+    });
   }
 
   Future<void> _tryBiometric() async {
     if (_unlocked || _biometricBusy) return;
-    if (!_ctrl.biometricEnabled.value || !_ctrl.biometricAvailable.value) {
-      return;
-    }
+    if (!_ctrl.biometricEnabled.value) return;
     setState(() => _biometricBusy = true);
     final ok = await _ctrl.authenticateBiometric();
     if (!mounted) return;
-    setState(() => _biometricBusy = false);
+    setState(() {
+      _biometricBusy = false;
+      if (!ok && _ctrl.biometricError.value.isNotEmpty) {
+        _error = true;
+        _message = _ctrl.biometricError.value;
+      }
+    });
     if (ok) _unlock();
   }
 
@@ -132,8 +139,7 @@ class _LockPageState extends State<LockPage> {
                       ),
                     ),
                   ),
-                  if (_ctrl.biometricEnabled.value &&
-                      _ctrl.biometricAvailable.value) ...[
+                  if (_ctrl.biometricEnabled.value) ...[
                     const SizedBox(height: 18),
                     TextButton.icon(
                       onPressed: _biometricBusy ? null : _tryBiometric,

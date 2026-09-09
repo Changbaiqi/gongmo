@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
 import 'package:local_auth/local_auth.dart';
@@ -31,6 +32,9 @@ class LockController extends GetxController {
   /// 设备是否支持生物识别
   final biometricAvailable = false.obs;
 
+  /// 最近一次生物识别失败原因（供界面提示）
+  final biometricError = ''.obs;
+
   DateTime? _lastUnlockAt;
 
   Future<void> init() async {
@@ -43,9 +47,12 @@ class LockController extends GetxController {
       enabled.value = false;
       biometricEnabled.value = false;
     }
+    // 部分机型（如 MIUI）canCheckBiometrics 会误报 false，
+    // 用 isDeviceSupported 兜底判断是否有生物识别硬件
     try {
-      biometricAvailable.value =
-          await _auth.canCheckBiometrics && await _auth.isDeviceSupported();
+      final canCheck = await _auth.canCheckBiometrics;
+      final supported = await _auth.isDeviceSupported();
+      biometricAvailable.value = canCheck || supported;
     } catch (_) {
       biometricAvailable.value = false;
     }
@@ -77,20 +84,48 @@ class LockController extends GetxController {
 
   /// 触发系统生物识别验证
   Future<bool> authenticateBiometric() async {
-    if (!biometricAvailable.value) return false;
+    biometricError.value = '';
+    if (!biometricAvailable.value) {
+      biometricError.value = '当前设备不支持指纹/生物识别';
+      return false;
+    }
     try {
       final ok = await _auth.authenticate(
         localizedReason: '验证身份以解锁工墨',
         options: const AuthenticationOptions(
-          biometricOnly: true,
+          // 不用 biometricOnly：部分机型（MIUI 等）会静默失败，
+          // 允许回退到锁屏密码更可靠
+          biometricOnly: false,
           stickyAuth: true,
           useErrorDialogs: true,
         ),
       );
       if (ok) markUnlocked();
       return ok;
-    } catch (_) {
+    } on PlatformException catch (e) {
+      biometricError.value = _authErrorMessage(e.code);
       return false;
+    } catch (_) {
+      biometricError.value = '指纹验证失败，请重试';
+      return false;
+    }
+  }
+
+  String _authErrorMessage(String code) {
+    switch (code) {
+      case 'NotAvailable':
+        return '当前设备不支持生物识别';
+      case 'NotEnrolled':
+        return '请先在系统设置中录入指纹';
+      case 'PasscodeNotSet':
+        return '请先在系统设置中设置锁屏密码';
+      case 'LockedOut':
+      case 'PermanentlyLockedOut':
+        return '指纹已被系统锁定，请用图案解锁';
+      case 'no_fragment_activity':
+        return '设备配置异常，请用图案解锁';
+      default:
+        return '指纹验证失败（$code）';
     }
   }
 
