@@ -102,7 +102,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
   Future<void> _runAutoSync() async {
     if (!autoSync.value || isSyncing.value || isRestoring.value) return;
     if (!isConnected) return;
-    final hash = _storage.exportAllData().hashCode;
+    final hash = _storage.syncSignature.hashCode;
     if (hash == _lastSyncedHash) return; // 数据无变化
     isSyncing.value = true;
     try {
@@ -110,7 +110,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       final now = DateTime.now();
       await _sync.setLastSync(now);
       lastSyncTime.value = now;
-      _lastSyncedHash = _storage.exportAllData().hashCode;
+      _lastSyncedHash = _storage.syncSignature.hashCode;
       refreshStats();
     } catch (_) {
       // 自动同步失败时静默，等待下次数据变动重试
@@ -139,7 +139,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       final now = DateTime.now();
       await _sync.setLastSync(now);
       lastSyncTime.value = now;
-      _lastSyncedHash = _storage.exportAllData().hashCode;
+      _lastSyncedHash = _storage.syncSignature.hashCode;
       refreshStats();
       Get.snackbar('同步完成', '已备份 ${totalEntries.value} 条记录到 GitHub');
     } on GithubSyncException catch (e) {

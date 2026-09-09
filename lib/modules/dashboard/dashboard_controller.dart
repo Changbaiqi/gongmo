@@ -75,13 +75,13 @@ class DashboardController extends GetxController {
     } else {
       budgets[categoryId] = amount;
     }
-    StorageService().setConfig('budgets', Map<String, dynamic>.from(budgets));
+    StorageService().setDataConfig('budgets', Map<String, dynamic>.from(budgets));
   }
 
   /// 设置总预算（0 表示清除，自动回落为分类预算之和）
   void setTotalBudget(double v) {
     totalBudget.value = v;
-    StorageService().setConfig('total_budget', v);
+    StorageService().setDataConfig('total_budget', v);
   }
 
   /// 恢复云端备份中的预算配置
@@ -89,8 +89,8 @@ class DashboardController extends GetxController {
     this.budgets.assignAll(budgets);
     totalBudget.value = total;
     StorageService()
-      ..setConfig('total_budget', total)
-      ..setConfig('budgets', Map<String, dynamic>.from(budgets));
+      ..setDataConfig('total_budget', total)
+      ..setDataConfig('budgets', Map<String, dynamic>.from(budgets));
   }
 
   void refreshData() {

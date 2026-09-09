@@ -526,29 +526,34 @@ class _HomePageState extends State<HomePage>
                     final ratio = preview > 0
                         ? _dc.monthExpense.value / preview
                         : 0.0;
-                    return _BudgetRing(
-                      progress: ratio,
-                      progressColor: cs.primary,
-                      trackColor: cs.surfaceContainerHighest,
-                      center: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            preview > 0
-                                ? '${(ratio * 100).round()}%'
-                                : '--',
-                            style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: cs.onSurface),
-                          ),
-                          const SizedBox(height: 2),
-                          Text('已使用',
+                    return TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: ratio),
+                      duration: const Duration(milliseconds: 420),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, _) => _BudgetRing(
+                        progress: value,
+                        progressColor: cs.primary,
+                        trackColor: cs.surfaceContainerHighest,
+                        center: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              preview > 0
+                                  ? '${(value * 100).round()}%'
+                                  : '--',
                               style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: cs.onSurfaceVariant
-                                      .withValues(alpha: 0.8))),
-                        ],
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurface),
+                            ),
+                            const SizedBox(height: 2),
+                            Text('已使用',
+                                style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: cs.onSurfaceVariant
+                                        .withValues(alpha: 0.8))),
+                          ],
+                        ),
                       ),
                     );
                   },

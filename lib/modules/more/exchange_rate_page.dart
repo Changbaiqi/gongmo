@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import '../../data/services/storage_service.dart';
+import '../../core/widgets/count_up_text.dart';
 
 /// 汇率计算器：以人民币为基准，换算常用货币
 class ExchangeRatePage extends StatefulWidget {
@@ -365,10 +366,10 @@ class _ExchangeRatePageState extends State<ExchangeRatePage>
                     fontFeatures: const [FontFeature.tabularFigures()])),
         trailing: converted == null
             ? null
-            : Text(
-                converted >= 1000
-                    ? converted.toStringAsFixed(0)
-                    : converted.toStringAsFixed(2),
+            : CountUpText(
+                value: converted,
+                formatter: (v) =>
+                    v >= 1000 ? v.toStringAsFixed(0) : v.toStringAsFixed(2),
                 style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,

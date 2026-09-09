@@ -192,6 +192,20 @@ class StorageService {
     await file.writeAsString(json.encode(_config));
   }
 
+  /// 写入会进入云端备份的数据类配置（如预算），并触发自动同步
+  Future<void> setDataConfig(String key, dynamic value) async {
+    await setConfig(key, value);
+    _notifyDataChanged();
+  }
+
+  /// 自动同步去重指纹（含预算等配置类数据）
+  String get syncSignature {
+    final data = exportAllData();
+    data['budgets'] = _config['budgets'];
+    data['totalBudget'] = _config['total_budget'];
+    return json.encode(data);
+  }
+
   Future<void> _loadConfig() async {
     final file = File('${_dataDir.path}/${AppConstants.configFile}');
     if (!await file.exists()) return;
@@ -267,8 +281,10 @@ class StorageService {
     _notifyDataChanged();
   }
 
-  Future<void> saveInvoiceProfiles() =>
-      _saveList('invoice_profiles.json', _invoiceProfiles);
+  Future<void> saveInvoiceProfiles() async {
+    await _saveList('invoice_profiles.json', _invoiceProfiles);
+    _notifyDataChanged();
+  }
 
   void addInvoiceProfile(InvoiceProfile profile) {
     _invoiceProfiles.add(profile);
