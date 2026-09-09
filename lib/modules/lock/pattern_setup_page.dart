@@ -1,0 +1,144 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
+import '../../core/widgets/pattern_lock.dart';
+import 'lock_controller.dart';
+
+enum _SetupStep { verify, draw, confirm }
+
+/// 设置/修改解锁图案：先验证旧图案（若已设置），再绘制并确认新图案
+class PatternSetupPage extends StatefulWidget {
+  const PatternSetupPage({super.key});
+
+  @override
+  State<PatternSetupPage> createState() => _PatternSetupPageState();
+}
+
+class _PatternSetupPageState extends State<PatternSetupPage> {
+  final LockController _ctrl = Get.find<LockController>();
+
+  late _SetupStep _step =
+      _ctrl.hasPattern.value ? _SetupStep.verify : _SetupStep.draw;
+  List<int>? _first;
+  bool _error = false;
+  String _message = '';
+
+  String get _title => switch (_step) {
+        _SetupStep.verify => '验证当前图案',
+        _SetupStep.draw => '绘制新图案',
+        _SetupStep.confirm => '再次绘制确认',
+      };
+
+  String get _hint => switch (_step) {
+        _SetupStep.verify => '请先绘制当前使用的解锁图案',
+        _SetupStep.draw => '请连接至少 4 个点',
+        _SetupStep.confirm => '请再次绘制刚才的图案',
+      };
+
+  Future<void> _onCompleted(List<int> pattern) async {
+    switch (_step) {
+      case _SetupStep.verify:
+        final ok = await _ctrl.verifyPattern(pattern);
+        if (!mounted) return;
+        if (ok) {
+          setState(() {
+            _step = _SetupStep.draw;
+            _error = false;
+            _message = '';
+          });
+        } else {
+          setState(() {
+            _error = true;
+            _message = '当前图案不正确';
+          });
+        }
+        break;
+      case _SetupStep.draw:
+        if (pattern.length < 4) {
+          setState(() {
+            _error = true;
+            _message = '请至少连接 4 个点';
+          });
+          return;
+        }
+        setState(() {
+          _first = pattern;
+          _step = _SetupStep.confirm;
+          _error = false;
+          _message = '';
+        });
+        break;
+      case _SetupStep.confirm:
+        if (_first != null && listEquals(pattern, _first)) {
+          await _ctrl.savePattern(pattern);
+          if (!mounted) return;
+          Get.back(result: true);
+          Get.snackbar('设置成功', '解锁图案已更新');
+        } else {
+          setState(() {
+            _first = null;
+            _step = _SetupStep.draw;
+            _error = true;
+            _message = '两次绘制不一致，请重新绘制';
+          });
+        }
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('解锁图案'), centerTitle: true),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_title,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Text(_hint,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color:
+                            cs.onSurfaceVariant.withValues(alpha: 0.8))),
+                const SizedBox(height: 26),
+                PatternLock(
+                  size: 260,
+                  error: _error,
+                  onChanged: (p) {
+                    if (_error && p.isNotEmpty) {
+                      setState(() {
+                        _error = false;
+                        _message = '';
+                      });
+                    }
+                  },
+                  onCompleted: _onCompleted,
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  height: 22,
+                  child: AnimatedOpacity(
+                    opacity: _message.isEmpty ? 0 : 1,
+                    duration: const Duration(milliseconds: 200),
+                    child: Text(_message,
+                        style:
+                            TextStyle(fontSize: 12.5, color: cs.error)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
