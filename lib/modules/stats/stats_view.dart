@@ -13,14 +13,26 @@ class StatsView extends StatefulWidget {
   State<StatsView> createState() => _StatsViewState();
 }
 
-class _StatsViewState extends State<StatsView> {
+class _StatsViewState extends State<StatsView>
+    with SingleTickerProviderStateMixin {
   late final StatsController _ctrl;
+  late final AnimationController _switchAnim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+    value: 1,
+  );
 
   @override
   void initState() {
     super.initState();
     _ctrl = Get.put(StatsController());
     _ctrl.reload();
+  }
+
+  @override
+  void dispose() {
+    _switchAnim.dispose();
+    super.dispose();
   }
 
   @override
@@ -42,34 +54,41 @@ class _StatsViewState extends State<StatsView> {
                   child: _buildRangeBar(cs)),
               const SizedBox(height: 12),
               _SectionEntrance(
-                  key: const ValueKey('s_summary'),
-                  index: 2,
-                  child: _buildSummaryCard(cs)),
-              const SizedBox(height: 12),
-              _SectionEntrance(
-                  key: const ValueKey('s_trend'),
-                  index: 3,
-                  child: _buildTrendCard(cs)),
-              const SizedBox(height: 12),
-              _SectionEntrance(
-                  key: const ValueKey('s_expense'),
-                  index: 4,
-                  child: _buildCategoryCard(
-                      cs,
-                      '支出构成',
-                      _ctrl.expenseSlices.toList(),
-                      _ctrl.expense.value,
-                      '总支出')),
-              const SizedBox(height: 12),
-              _SectionEntrance(
-                  key: const ValueKey('s_income'),
-                  index: 5,
-                  child: _buildCategoryCard(
-                      cs,
-                      '收入构成',
-                      _ctrl.incomeSlices.toList(),
-                      _ctrl.income.value,
-                      '总收入')),
+                key: const ValueKey('s_content'),
+                index: 2,
+                child: FadeTransition(
+                  opacity: CurvedAnimation(
+                      parent: _switchAnim, curve: Curves.easeOut),
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.05, 0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                        parent: _switchAnim, curve: Curves.easeOutCubic)),
+                    child: Column(
+                      children: [
+                        _buildSummaryCard(cs),
+                        const SizedBox(height: 12),
+                        _buildTrendCard(cs),
+                        const SizedBox(height: 12),
+                        _buildCategoryCard(
+                            cs,
+                            '支出构成',
+                            _ctrl.expenseSlices.toList(),
+                            _ctrl.expense.value,
+                            '总支出'),
+                        const SizedBox(height: 12),
+                        _buildCategoryCard(
+                            cs,
+                            '收入构成',
+                            _ctrl.incomeSlices.toList(),
+                            _ctrl.income.value,
+                            '总收入'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(height: 8),
             ],
           ),
@@ -106,6 +125,7 @@ class _StatsViewState extends State<StatsView> {
       onTap: () {
         HapticFeedback.selectionClick();
         _ctrl.setPeriod(p);
+        _switchAnim.forward(from: 0);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -132,19 +152,42 @@ class _StatsViewState extends State<StatsView> {
     return Row(
       children: [
         IconButton(
-          onPressed: _ctrl.prevPeriod,
+          onPressed: () {
+            _ctrl.prevPeriod();
+            _switchAnim.forward(from: 0);
+          },
           icon: Icon(Icons.chevron_left_rounded,
               size: 22, color: cs.onSurfaceVariant),
         ),
         Expanded(
-          child: Text(
-            _ctrl.rangeLabel,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.4),
+                  end: Offset.zero,
+                ).animate(anim),
+                child: child,
+              ),
+            ),
+            child: Text(
+              _ctrl.rangeLabel,
+              key: ValueKey(_ctrl.rangeLabel),
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
           ),
         ),
         IconButton(
-          onPressed: _ctrl.canGoNext ? _ctrl.nextPeriod : null,
+          onPressed: _ctrl.canGoNext
+              ? () {
+                  _ctrl.nextPeriod();
+                  _switchAnim.forward(from: 0);
+                }
+              : null,
           icon: Icon(Icons.chevron_right_rounded,
               size: 22,
               color: _ctrl.canGoNext

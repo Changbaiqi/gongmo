@@ -14,8 +14,14 @@ class WorkStatsView extends StatefulWidget {
   State<WorkStatsView> createState() => _WorkStatsViewState();
 }
 
-class _WorkStatsViewState extends State<WorkStatsView> {
+class _WorkStatsViewState extends State<WorkStatsView>
+    with SingleTickerProviderStateMixin {
   late final WorkStatsController _ctrl;
+  late final AnimationController _switchAnim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+    value: 1,
+  );
 
   @override
   void initState() {
@@ -25,24 +31,49 @@ class _WorkStatsViewState extends State<WorkStatsView> {
   }
 
   @override
+  void dispose() {
+    _switchAnim.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Obx(() => ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           children: [
-              _buildPeriodToggle(cs),
+              _SectionEntrance(
+                  index: 0, child: _buildPeriodToggle(cs)),
               const SizedBox(height: 8),
-              _buildRangeBar(cs),
+              _SectionEntrance(index: 1, child: _buildRangeBar(cs)),
               const SizedBox(height: 12),
-              if (_ctrl.period.value == WorkStatsPeriod.month) ...[
-                _buildMonthCalendarCard(cs),
-                const SizedBox(height: 12),
-              ],
-              _buildSummaryCard(cs),
-            const SizedBox(height: 12),
-            _buildTrendCard(cs),
-            const SizedBox(height: 12),
-            _buildTagCard(cs),
+              _SectionEntrance(
+                index: 2,
+                child: FadeTransition(
+                  opacity: CurvedAnimation(
+                      parent: _switchAnim, curve: Curves.easeOut),
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.05, 0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                        parent: _switchAnim, curve: Curves.easeOutCubic)),
+                    child: Column(
+                      children: [
+                        if (_ctrl.period.value == WorkStatsPeriod.month) ...[
+                          _buildMonthCalendarCard(cs),
+                          const SizedBox(height: 12),
+                        ],
+                        _buildSummaryCard(cs),
+                        const SizedBox(height: 12),
+                        _buildTrendCard(cs),
+                        const SizedBox(height: 12),
+                        _buildTagCard(cs),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             const SizedBox(height: 8),
           ],
         ));
@@ -77,6 +108,7 @@ class _WorkStatsViewState extends State<WorkStatsView> {
       onTap: () {
         HapticFeedback.selectionClick();
         _ctrl.setPeriod(p);
+        _switchAnim.forward(from: 0);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -104,19 +136,42 @@ class _WorkStatsViewState extends State<WorkStatsView> {
     return Row(
       children: [
         IconButton(
-          onPressed: _ctrl.prevPeriod,
+          onPressed: () {
+            _ctrl.prevPeriod();
+            _switchAnim.forward(from: 0);
+          },
           icon: Icon(Icons.chevron_left_rounded,
               size: 22, color: cs.onSurfaceVariant),
         ),
         Expanded(
-          child: Text(
-            _ctrl.rangeLabel,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.4),
+                  end: Offset.zero,
+                ).animate(anim),
+                child: child,
+              ),
+            ),
+            child: Text(
+              _ctrl.rangeLabel,
+              key: ValueKey(_ctrl.rangeLabel),
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
           ),
         ),
         IconButton(
-          onPressed: _ctrl.canGoNext ? _ctrl.nextPeriod : null,
+          onPressed: _ctrl.canGoNext
+              ? () {
+                  _ctrl.nextPeriod();
+                  _switchAnim.forward(from: 0);
+                }
+              : null,
           icon: Icon(Icons.chevron_right_rounded,
               size: 22,
               color: _ctrl.canGoNext
@@ -308,6 +363,45 @@ class _WorkStatsViewState extends State<WorkStatsView> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 页面元素首次出现时上滑淡入（按 index 交错延迟）
+class _SectionEntrance extends StatefulWidget {
+  const _SectionEntrance({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_SectionEntrance> createState() => _SectionEntranceState();
+}
+
+class _SectionEntranceState extends State<_SectionEntrance> {
+  bool _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final delay = Duration(milliseconds: 55 * widget.index.clamp(0, 8));
+    Future.delayed(delay, () {
+      if (mounted) setState(() => _shown = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSlide(
+      offset: _shown ? Offset.zero : const Offset(0, 0.06),
+      duration: const Duration(milliseconds: 340),
+      curve: Curves.easeOutCubic,
+      child: AnimatedOpacity(
+        opacity: _shown ? 1 : 0,
+        duration: const Duration(milliseconds: 340),
+        curve: Curves.easeOut,
+        child: widget.child,
       ),
     );
   }

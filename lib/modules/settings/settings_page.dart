@@ -27,14 +27,16 @@ class SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _buildSectionTitle('外观'),
-          _buildAppearanceCard(context, tc),
+          _Entrance(index: 0, child: _buildSectionTitle('外观')),
+          _Entrance(index: 1, child: _buildAppearanceCard(context, tc)),
           const SizedBox(height: 24),
-          _buildSectionTitle('自动记账'),
-          _AutoAccountingCard(ctrl: ctrl),
+          _Entrance(index: 2, child: _buildSectionTitle('自动记账')),
+          _Entrance(index: 3, child: _AutoAccountingCard(ctrl: ctrl)),
           const SizedBox(height: 24),
-          _buildSectionTitle('GitHub 连接'),
-          Card(
+          _Entrance(index: 4, child: _buildSectionTitle('GitHub 连接')),
+          _Entrance(
+              index: 5,
+              child: Card(
             child: Column(
               children: [
                 ListTile(
@@ -76,10 +78,12 @@ class SettingsPage extends StatelessWidget {
                 ),
               ],
             ),
-          ),
+          )),
           const SizedBox(height: 24),
-          _buildSectionTitle('关于'),
-          Card(
+          _Entrance(index: 6, child: _buildSectionTitle('关于')),
+          _Entrance(
+              index: 7,
+              child: Card(
             child: Column(
               children: [
                 const ListTile(
@@ -107,7 +111,7 @@ class SettingsPage extends StatelessWidget {
                 ),
               ],
             ),
-          ),
+          )),
         ],
       ),
     );
@@ -344,7 +348,11 @@ class SettingsPage extends StatelessWidget {
     final selected = tc.preset.value == preset;
     return GestureDetector(
       onTap: () => tc.setPreset(preset),
-      child: AnimatedContainer(
+      child: AnimatedScale(
+        scale: selected ? 1.05 : 1.0,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutBack,
+        child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         width: 96,
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -392,6 +400,7 @@ class SettingsPage extends StatelessWidget {
                   fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                 )),
           ],
+        ),
         ),
       ),
     );
@@ -564,8 +573,11 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
       child: Column(
         children: [
           Obx(() => SwitchListTile(
-                secondary: Icon(Icons.notifications_active_outlined,
-                    color: cs.primary),
+                secondary: _PulseIcon(
+                  icon: Icons.notifications_active_outlined,
+                  color: cs.primary,
+                  active: widget.ctrl.autoAccountingRunning.value,
+                ),
                 title: const Text('自动记账',
                     style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: Text(
@@ -657,6 +669,101 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 页面元素首次出现时上滑淡入（按 index 交错延迟）
+class _Entrance extends StatefulWidget {
+  const _Entrance({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_Entrance> createState() => _EntranceState();
+}
+
+class _EntranceState extends State<_Entrance> {
+  bool _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final delay = Duration(milliseconds: 45 * widget.index.clamp(0, 8));
+    Future.delayed(delay, () {
+      if (mounted) setState(() => _shown = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSlide(
+      offset: _shown ? Offset.zero : const Offset(0, 0.06),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      child: AnimatedOpacity(
+        opacity: _shown ? 1 : 0,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// 图标在 active 时轻微脉冲缩放
+class _PulseIcon extends StatefulWidget {
+  const _PulseIcon({
+    required this.icon,
+    required this.color,
+    required this.active,
+  });
+
+  final IconData icon;
+  final Color color;
+  final bool active;
+
+  @override
+  State<_PulseIcon> createState() => _PulseIconState();
+}
+
+class _PulseIconState extends State<_PulseIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _ctrl.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PulseIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !_ctrl.isAnimating) {
+      _ctrl.repeat(reverse: true);
+    } else if (!widget.active && _ctrl.isAnimating) {
+      _ctrl.animateBack(0, duration: const Duration(milliseconds: 200));
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: Tween<double>(begin: 1.0, end: 1.18).animate(
+        CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+      ),
+      child: Icon(widget.icon, color: widget.color),
     );
   }
 }
