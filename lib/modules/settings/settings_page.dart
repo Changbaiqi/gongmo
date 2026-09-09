@@ -232,10 +232,11 @@ class SettingsPage extends StatelessWidget {
                         color: cs.onSurface)),
                 const SizedBox(height: 10),
                 SizedBox(
-                  height: 68,
+                  height: 80,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    padding: EdgeInsets.zero,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                     itemCount: AppThemePreset.values.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (context, index) =>
