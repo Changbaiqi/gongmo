@@ -8,6 +8,7 @@ class InvoiceProfile {
   String phone; // 电话
   String bankName; // 开户银行
   String bankAccount; // 银行账号
+  DateTime updatedAt;
 
   InvoiceProfile({
     required this.id,
@@ -18,7 +19,8 @@ class InvoiceProfile {
     this.phone = '',
     this.bankName = '',
     this.bankAccount = '',
-  });
+    DateTime? updatedAt,
+  }) : updatedAt = updatedAt ?? DateTime.now();
 
   factory InvoiceProfile.fromJson(Map<String, dynamic> json) {
     return InvoiceProfile(
@@ -30,6 +32,10 @@ class InvoiceProfile {
       phone: json['phone'] as String? ?? '',
       bankName: json['bankName'] as String? ?? '',
       bankAccount: json['bankAccount'] as String? ?? '',
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'] as String) ??
+              DateTime.fromMillisecondsSinceEpoch(0)
+          : DateTime.fromMillisecondsSinceEpoch(0),
     );
   }
 
@@ -43,6 +49,7 @@ class InvoiceProfile {
       'phone': phone,
       'bankName': bankName,
       'bankAccount': bankAccount,
+      'updatedAt': updatedAt.toIso8601String(),
     };
   }
 }

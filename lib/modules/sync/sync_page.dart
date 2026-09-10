@@ -103,8 +103,8 @@ class SyncPage extends StatelessWidget {
             _Entrance(
               index: 6,
               child: Text(
-                '备份文件为 JSON 格式，保存于 GitHub 仓库根目录的 gongmo_backup.json；'
-                '恢复时会覆盖本地全部数据，请谨慎操作。',
+                '备份按年份分片保存在仓库的 gongmo_backup/ 目录；“备份”会先合并云端数据再上传，'
+                '多台设备同时记录也不会互相覆盖；“恢复”会用云端数据覆盖本地，请谨慎操作。',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11.5,

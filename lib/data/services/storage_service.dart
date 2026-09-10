@@ -8,6 +8,7 @@ import '../models/category.dart';
 import '../models/account.dart';
 import '../models/timer_tag.dart';
 import '../models/invoice_profile.dart';
+import 'sync_merge.dart';
 
 class StorageService {
   static final StorageService _instance = StorageService._();
@@ -24,6 +25,10 @@ class StorageService {
   List<TimerTag> _timerTags = [];
   List<InvoiceProfile> _invoiceProfiles = [];
   Map<String, dynamic> _config = {};
+
+  /// 删除墓碑：`kind:id` -> 删除时间（毫秒），多设备合并时用于避免已删记录被恢复
+  Map<String, int> _tombstones = {};
+  static const _tombstoneFile = 'tombstones.json';
 
   /// 数据落盘后的回调（用于自动同步）；恢复数据过程中不触发
   void Function()? onDataChanged;
@@ -98,6 +103,42 @@ class StorageService {
       await _saveList('timer_tags.json', _timerTags);
     }
     await _loadConfig();
+    await _loadTombstones();
+  }
+
+  // ---------- 删除墓碑（多设备合并用） ----------
+
+  Map<String, int> get tombstones => Map<String, int>.from(_tombstones);
+
+  Future<void> _loadTombstones() async {
+    try {
+      final f = File('${_dataDir.path}/$_tombstoneFile');
+      if (!await f.exists()) return;
+      _tombstones =
+          SyncMerge.parseIntMap(json.decode(await f.readAsString()));
+      SyncMerge.prune(_tombstones);
+    } catch (_) {
+      _tombstones = {};
+    }
+  }
+
+  Future<void> _saveTombstones() async {
+    try {
+      SyncMerge.prune(_tombstones);
+      await File('${_dataDir.path}/$_tombstoneFile')
+          .writeAsString(json.encode(_tombstones));
+    } catch (_) {}
+  }
+
+  void _markDeleted(String kind, String id) {
+    if (id.isEmpty) return;
+    _tombstones['$kind:$id'] = DateTime.now().millisecondsSinceEpoch;
+    _saveTombstones();
+  }
+
+  Future<void> _saveConfigFile() async {
+    final file = File('${_dataDir.path}/${AppConstants.configFile}');
+    await file.writeAsString(json.encode(_config));
   }
 
   /// 旧版本单文件迁移到按年分片后删除
@@ -188,21 +229,23 @@ class StorageService {
   /// 写入轻量配置项
   Future<void> setConfig(String key, dynamic value) async {
     _config[key] = value;
-    final file = File('${_dataDir.path}/${AppConstants.configFile}');
-    await file.writeAsString(json.encode(_config));
+    await _saveConfigFile();
   }
 
-  /// 写入会进入云端备份的数据类配置（如预算），并触发自动同步
+  /// 写入会进入云端备份的数据类配置（如预算），记录更新时间并触发自动同步
   Future<void> setDataConfig(String key, dynamic value) async {
-    await setConfig(key, value);
+    _config[key] = value;
+    _config['${key}_updated_at'] = DateTime.now().millisecondsSinceEpoch;
+    await _saveConfigFile();
     _notifyDataChanged();
   }
 
-  /// 自动同步去重指纹（含预算等配置类数据）
+  /// 自动同步去重指纹（含预算与删除墓碑）
   String get syncSignature {
     final data = exportAllData();
     data['budgets'] = _config['budgets'];
     data['totalBudget'] = _config['total_budget'];
+    data['tombstones'] = _tombstones;
     return json.encode(data);
   }
 
@@ -294,12 +337,14 @@ class StorageService {
   void updateInvoiceProfile(InvoiceProfile profile) {
     final index = _invoiceProfiles.indexWhere((e) => e.id == profile.id);
     if (index != -1) {
+      profile.updatedAt = DateTime.now();
       _invoiceProfiles[index] = profile;
       saveInvoiceProfiles();
     }
   }
 
   void removeInvoiceProfile(String id) {
+    _markDeleted('invoice', id);
     _invoiceProfiles.removeWhere((e) => e.id == id);
     saveInvoiceProfiles();
   }
@@ -318,6 +363,7 @@ class StorageService {
   }
 
   void removeWorkEntry(String id) {
+    _markDeleted('work', id);
     _workEntries.removeWhere((e) => e.id == id);
     saveWorkEntries();
   }
@@ -336,6 +382,7 @@ class StorageService {
   }
 
   void removeFinanceEntry(String id) {
+    _markDeleted('finance', id);
     _financeEntries.removeWhere((e) => e.id == id);
     saveFinanceEntries();
   }
@@ -348,12 +395,14 @@ class StorageService {
   void updateCategory(Category category) {
     final index = _categories.indexWhere((e) => e.id == category.id);
     if (index != -1) {
+      category.updatedAt = DateTime.now();
       _categories[index] = category;
       saveCategories();
     }
   }
 
   void removeCategory(String id) {
+    _markDeleted('category', id);
     _categories.removeWhere((e) => e.id == id);
     saveCategories();
   }
@@ -364,6 +413,7 @@ class StorageService {
   }
 
   void removeAccount(String id) {
+    _markDeleted('account', id);
     _accounts.removeWhere((e) => e.id == id);
     saveAccounts();
   }
@@ -376,12 +426,14 @@ class StorageService {
   void updateTimerTag(TimerTag tag) {
     final index = _timerTags.indexWhere((e) => e.id == tag.id);
     if (index != -1) {
+      tag.updatedAt = DateTime.now();
       _timerTags[index] = tag;
       saveTimerTags();
     }
   }
 
   void removeTimerTag(String id) {
+    _markDeleted('timerTag', id);
     _timerTags.removeWhere((e) => e.id == id);
     saveTimerTags();
   }
@@ -467,6 +519,99 @@ class StorageService {
     return bytes;
   }
 
+  /// 将远端备份合并进本地（并集 + 最新修改优先 + 删除墓碑）。
+  ///
+  /// 用于多设备场景：避免本机把另一台设备的较新数据整包覆盖掉。
+  /// 返回本地数据是否发生变化。
+  Future<bool> mergeRemoteData(Map<String, dynamic> remote) async {
+    final before = syncSignature;
+    final remoteTomb = SyncMerge.parseIntMap(remote['tombstones']);
+
+    _restoring = true; // 合并期间的落盘不触发自动同步
+    try {
+      _tombstones = SyncMerge.mergeTombstones(_tombstones, remoteTomb);
+
+      List<Map<String, dynamic>> mergeOf(
+          List<dynamic> localList, dynamic remoteRaw, String kind) {
+        return SyncMerge.mergeRecords(
+          local: localList,
+          remote: remoteRaw is List ? remoteRaw : const [],
+          tombstones: _tombstones,
+          kind: kind,
+        );
+      }
+
+      final work = mergeOf(
+          _workEntries.map((e) => e.toJson()).toList(),
+          remote['workEntries'],
+          'work');
+      final finance = mergeOf(
+          _financeEntries.map((e) => e.toJson()).toList(),
+          remote['financeEntries'],
+          'finance');
+      final categories = mergeOf(
+          _categories.map((e) => e.toJson()).toList(),
+          remote['categories'],
+          'category');
+      final accounts = mergeOf(
+          _accounts.map((e) => e.toJson()).toList(),
+          remote['accounts'],
+          'account');
+      final tags = mergeOf(
+          _timerTags.map((e) => e.toJson()).toList(),
+          remote['timerTags'],
+          'timerTag');
+      final invoices = mergeOf(
+          _invoiceProfiles.map((e) => e.toJson()).toList(),
+          remote['invoiceProfiles'],
+          'invoice');
+
+      _workEntries = work.map(WorkEntry.fromJson).toList();
+      _financeEntries = finance.map(FinanceEntry.fromJson).toList();
+      if (categories.isNotEmpty) {
+        _categories = categories.map(Category.fromJson).toList();
+      }
+      if (accounts.isNotEmpty) {
+        _accounts = accounts.map(Account.fromJson).toList();
+      }
+      if (tags.isNotEmpty) {
+        _timerTags = tags.map(TimerTag.fromJson).toList();
+      }
+      if (invoices.isNotEmpty) {
+        _invoiceProfiles = invoices.map(InvoiceProfile.fromJson).toList();
+      }
+
+      // 预算配置：按更新时间取较新的一方
+      final remoteBudgetAt =
+          int.tryParse('${remote['budgetsUpdatedAt'] ?? 0}') ?? 0;
+      final localBudgetAt =
+          int.tryParse('${_config['budgets_updated_at'] ?? 0}') ?? 0;
+      if (remoteBudgetAt > localBudgetAt) {
+        if (remote['budgets'] is Map) {
+          _config['budgets'] =
+              Map<String, dynamic>.from(remote['budgets'] as Map);
+        }
+        if (remote['totalBudget'] != null) {
+          _config['total_budget'] = remote['totalBudget'];
+        }
+        _config['budgets_updated_at'] = remoteBudgetAt;
+        _config['total_budget_updated_at'] = remoteBudgetAt;
+      }
+
+      await saveWorkEntries();
+      await saveFinanceEntries();
+      await saveCategories();
+      await saveAccounts();
+      await saveTimerTags();
+      await saveInvoiceProfiles();
+      await _saveTombstones();
+      await _saveConfigFile();
+    } finally {
+      _restoring = false;
+    }
+    return before != syncSignature;
+  }
+
   /// 用备份数据整体覆盖本地数据（空列表保留本地默认值）
   Future<void> restoreAllData({
     required List<WorkEntry> workEntries,
@@ -475,6 +620,7 @@ class StorageService {
     required List<Account> accounts,
     required List<TimerTag> timerTags,
     List<InvoiceProfile> invoiceProfiles = const [],
+    Map<String, int>? tombstones,
   }) async {
     _restoring = true; // 恢复过程触发的落盘不触发自动同步
     try {
@@ -484,11 +630,15 @@ class StorageService {
       if (accounts.isNotEmpty) _accounts = accounts;
       if (timerTags.isNotEmpty) _timerTags = timerTags;
       if (invoiceProfiles.isNotEmpty) _invoiceProfiles = invoiceProfiles;
+      if (tombstones != null) {
+        _tombstones = Map<String, int>.from(tombstones);
+      }
       await saveWorkEntries();
       await saveFinanceEntries();
       await saveCategories();
       await saveAccounts();
       await saveTimerTags();
+      await _saveTombstones();
     } finally {
       _restoring = false;
     }

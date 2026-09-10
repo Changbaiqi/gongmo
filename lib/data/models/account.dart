@@ -3,13 +3,16 @@ class Account {
   String name;
   double initialBalance;
   DateTime createdAt;
+  DateTime updatedAt;
 
   Account({
     required this.id,
     required this.name,
     this.initialBalance = 0,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    DateTime? updatedAt,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
 
   factory Account.fromJson(Map<String, dynamic> json) {
     return Account(
@@ -19,6 +22,10 @@ class Account {
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'] as String) ??
+              DateTime.fromMillisecondsSinceEpoch(0)
+          : DateTime.fromMillisecondsSinceEpoch(0),
     );
   }
 
@@ -28,6 +35,7 @@ class Account {
       'name': name,
       'initialBalance': initialBalance,
       'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
     };
   }
 

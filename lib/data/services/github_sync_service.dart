@@ -132,8 +132,8 @@ class GithubSyncService {
     return shas;
   }
 
-  Future<void> _putFile(String repo, String token, String name, String content,
-      Map<String, String> shas, String commitMsg) async {
+  Future<String?> _putFile(String repo, String token, String name,
+      String content, Map<String, String> shas, String commitMsg) async {
     final res = await _send(() => http.put(
           _fileUri(repo, name),
           headers: _headers(token),
@@ -144,8 +144,15 @@ class GithubSyncService {
           }),
         ));
     if (res.statusCode != 200 && res.statusCode != 201) {
-      throw _errorFor(res.statusCode);
+      throw _errorFor(res.statusCode, res.body);
     }
+    try {
+      final body = json.decode(res.body);
+      if (body is Map && body['content'] is Map) {
+        return (body['content'] as Map)['sha'] as String?;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<String?> _getFile(String repo, String token, String name) async {
@@ -163,6 +170,9 @@ class GithubSyncService {
   /// gongmo_backup/index.json（索引 + 分类/账户/标签等全局数据）
   /// gongmo_backup/{年份}.json（该年份的计时 + 账目数据）
   /// 每个文件只含一年数据，远低于 GitHub 单文件 100MB 上限
+  ///
+  /// 关键：上传前若发现云端已被其它设备更新，会先拉取并**合并**到本地，
+  /// 再上传合并后的结果，避免本机较旧的数据整包覆盖云端较新的数据。
   Future<void> pushBackup() async {
     final repo = await getRepoUrl();
     final token = await getToken();
@@ -170,8 +180,26 @@ class GithubSyncService {
       throw GithubSyncException('请先在设置中绑定仓库并填写 Token');
     }
 
+    final shas = await _remoteShas(repo, token);
+    final remoteIndexSha = shas['index.json'];
+    final knownSha = _storage.getConfig('last_remote_sha');
+
+    // 云端有本机未知的更新时，先合并（首次同步也会合并）
+    if (remoteIndexSha != null && remoteIndexSha != knownSha) {
+      final remote = await _pullRaw(repo, token);
+      if (remote != null) {
+        await _storage.mergeRemoteData(remote);
+      }
+    }
+
     final yearData = _storage.exportDataByYear();
     final years = yearData.keys.toList()..sort();
+    // 预算配置统一用「预算/总预算」中较晚的修改时间参与合并比较
+    final budgetsAt =
+        (_storage.getConfig('budgets_updated_at') as num?)?.toInt() ?? 0;
+    final totalAt =
+        (_storage.getConfig('total_budget_updated_at') as num?)?.toInt() ?? 0;
+    final budgetsUpdatedAt = budgetsAt > totalAt ? budgetsAt : totalAt;
     final indexContent = json.encode({
       'app': 'gongmo',
       'version': 2,
@@ -189,10 +217,11 @@ class GithubSyncService {
             _storage.invoiceProfiles.map((e) => e.toJson()).toList(),
         'budgets': _storage.getConfig('budgets') ?? {},
         'totalBudget': _storage.getConfig('total_budget') ?? 0,
+        'budgetsUpdatedAt': budgetsUpdatedAt,
+        'tombstones': _storage.tombstones,
       },
     });
 
-    final shas = await _remoteShas(repo, token);
     final commitMsg =
         'GongMo backup ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}';
     for (final y in years) {
@@ -203,7 +232,11 @@ class GithubSyncService {
       });
       await _putFile(repo, token, '$y.json', content, shas, commitMsg);
     }
-    await _putFile(repo, token, 'index.json', indexContent, shas, commitMsg);
+    final newIndexSha =
+        await _putFile(repo, token, 'index.json', indexContent, shas, commitMsg);
+    if (newIndexSha != null) {
+      await _storage.setConfig('last_remote_sha', newIndexSha);
+    }
   }
 
   /// 拉取并合并所有年份分片，返回与 restoreAllData 对应的数据结构
@@ -213,11 +246,17 @@ class GithubSyncService {
     if (repo.isEmpty || token.isEmpty) {
       throw GithubSyncException('请先在设置中绑定仓库并填写 Token');
     }
-
-    final indexContent = await _getFile(repo, token, 'index.json');
-    if (indexContent == null) {
+    final data = await _pullRaw(repo, token);
+    if (data == null) {
       throw GithubSyncException('云端还没有备份文件');
     }
+    return data;
+  }
+
+  /// 读取远端备份（不存在返回 null）
+  Future<Map<String, dynamic>?> _pullRaw(String repo, String token) async {
+    final indexContent = await _getFile(repo, token, 'index.json');
+    if (indexContent == null) return null;
     final index = json.decode(indexContent);
     if (index is! Map<String, dynamic>) {
       throw GithubSyncException('云端备份索引异常，无法恢复');
@@ -259,6 +298,8 @@ class GithubSyncService {
       'invoiceProfiles': global['invoiceProfiles'] ?? [],
       'budgets': global['budgets'] ?? {},
       'totalBudget': global['totalBudget'] ?? 0,
+      'budgetsUpdatedAt': global['budgetsUpdatedAt'] ?? 0,
+      'tombstones': global['tombstones'] ?? {},
     };
   }
 
@@ -342,6 +383,8 @@ class GithubSyncService {
             : 'Token 权限不足（需要 Contents 读写权限）${detail != null ? '（GitHub: $detail）' : ''}');
       case 404:
         return GithubSyncException('仓库不存在或 Token 无权访问该仓库，请检查地址与 Token 的仓库授权');
+      case 409:
+        return GithubSyncException('云端数据刚被其它设备更新，本次已跳过，稍后会重新合并同步');
       case 301:
         return GithubSyncException('仓库已迁移，请更新仓库地址');
       default:

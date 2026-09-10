@@ -12,6 +12,7 @@ class TimerTag {
   double hourlyRate;
   double fixedSalary;
   int sortOrder;
+  DateTime updatedAt;
 
   static const incomeNone = 'none';
   static const incomeHourly = 'hourly';
@@ -28,7 +29,8 @@ class TimerTag {
     this.hourlyRate = 0,
     this.fixedSalary = 0,
     this.sortOrder = 0,
-  });
+    DateTime? updatedAt,
+  }) : updatedAt = updatedAt ?? DateTime.now();
 
   factory TimerTag.fromJson(Map<String, dynamic> json) {
     final isWork = json['isWork'] as bool? ?? false;
@@ -43,6 +45,10 @@ class TimerTag {
       hourlyRate: (json['hourlyRate'] as num?)?.toDouble() ?? 0,
       fixedSalary: (json['fixedSalary'] as num?)?.toDouble() ?? 0,
       sortOrder: json['sortOrder'] as int? ?? 0,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'] as String) ??
+              DateTime.fromMillisecondsSinceEpoch(0)
+          : DateTime.fromMillisecondsSinceEpoch(0),
     );
   }
 
@@ -57,6 +63,7 @@ class TimerTag {
       'hourlyRate': hourlyRate,
       'fixedSalary': fixedSalary,
       'sortOrder': sortOrder,
+      'updatedAt': updatedAt.toIso8601String(),
     };
   }
 

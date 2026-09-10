@@ -13,6 +13,7 @@ import '../../data/models/work_entry.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
 import '../../data/services/github_sync_service.dart';
 import '../../data/services/storage_service.dart';
+import '../../data/services/sync_merge.dart';
 import '../dashboard/dashboard_controller.dart';
 import '../finance/finance_controller.dart';
 import '../settings/settings_controller.dart';
@@ -92,7 +93,9 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       Get.find<FinanceController>().loadEntries();
     } catch (_) {}
     try {
-      Get.find<DashboardController>(tag: 'dashboard').refreshData();
+      final dc = Get.find<DashboardController>(tag: 'dashboard');
+      dc.reloadBudgets();
+      dc.refreshData();
     } catch (_) {}
     try {
       Get.find<WorkController>().loadEntries();
@@ -112,6 +115,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       lastSyncTime.value = now;
       _lastSyncedHash = _storage.syncSignature.hashCode;
       refreshStats();
+      _notifyUi(); // 合并可能引入了云端的新数据，刷新界面
     } catch (_) {
       // 自动同步失败时静默，等待下次数据变动重试
     } finally {
@@ -141,6 +145,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       lastSyncTime.value = now;
       _lastSyncedHash = _storage.syncSignature.hashCode;
       refreshStats();
+      _notifyUi(); // 合并可能引入了云端的新数据，刷新界面
       Get.snackbar('同步完成', '已备份 ${totalEntries.value} 条记录到 GitHub');
     } on GithubSyncException catch (e) {
       Get.snackbar('同步失败', e.message);
@@ -170,6 +175,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
         timerTags: _parseList(data['timerTags'], TimerTag.fromJson),
         invoiceProfiles:
             _parseList(data['invoiceProfiles'], InvoiceProfile.fromJson),
+        tombstones: SyncMerge.parseIntMap(data['tombstones']),
       );
       // 恢复预算配置
       try {

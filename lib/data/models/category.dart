@@ -7,6 +7,7 @@ class Category {
   String icon;
   String color;
   int sortOrder;
+  DateTime updatedAt;
 
   Category({
     required this.id,
@@ -15,7 +16,8 @@ class Category {
     this.icon = '',
     this.color = '#2196F3',
     this.sortOrder = 0,
-  });
+    DateTime? updatedAt,
+  }) : updatedAt = updatedAt ?? DateTime.now();
 
   factory Category.fromJson(Map<String, dynamic> json) {
     return Category(
@@ -25,6 +27,10 @@ class Category {
       icon: json['icon'] as String? ?? '',
       color: json['color'] as String? ?? '#2196F3',
       sortOrder: json['sortOrder'] as int? ?? 0,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'] as String) ??
+              DateTime.fromMillisecondsSinceEpoch(0)
+          : DateTime.fromMillisecondsSinceEpoch(0),
     );
   }
 
@@ -36,6 +42,7 @@ class Category {
       'icon': icon,
       'color': color,
       'sortOrder': sortOrder,
+      'updatedAt': updatedAt.toIso8601String(),
     };
   }
 
@@ -45,6 +52,7 @@ class Category {
     String? icon,
     String? color,
     int? sortOrder,
+    DateTime? updatedAt,
   }) {
     return Category(
       id: id,
@@ -53,6 +61,7 @@ class Category {
       icon: icon ?? this.icon,
       color: color ?? this.color,
       sortOrder: sortOrder ?? this.sortOrder,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 

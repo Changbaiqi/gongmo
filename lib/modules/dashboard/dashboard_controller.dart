@@ -34,6 +34,13 @@ class DashboardController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    reloadBudgets();
+    refreshData();
+  }
+
+  /// 从配置重新加载预算（云端合并/恢复后调用）
+  void reloadBudgets() {
+    budgets.clear();
     final rawBudgets = StorageService().getConfig('budgets');
     if (rawBudgets is Map) {
       for (final e in rawBudgets.entries) {
@@ -42,8 +49,7 @@ class DashboardController extends GetxController {
       }
     }
     final tb = StorageService().getConfig('total_budget');
-    if (tb is num) totalBudget.value = tb.toDouble();
-    refreshData();
+    totalBudget.value = tb is num ? tb.toDouble() : 0;
   }
 
   /// 已分配的分类子预算之和
