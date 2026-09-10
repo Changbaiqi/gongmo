@@ -685,71 +685,82 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                   }
                 },
               )),
-          if (widget.ctrl.autoAccounting.value) ...[
-            const Divider(height: 1),
-            Obx(() => Column(
-                  children: [
-                    for (final app in AutoBookkeepingService.supportedApps)
-                      SwitchListTile(
-                        secondary: Icon(
-                          app.key == 'alipay'
-                              ? Icons.currency_yuan_rounded
-                              : app.key == 'wechat'
-                                  ? Icons.wechat
-                                  : Icons.account_balance_rounded,
-                          color: cs.primary.withValues(alpha: 0.8),
-                          size: 20,
-                        ),
-                        dense: true,
-                        title: Text(app.name,
-                            style: const TextStyle(fontSize: 13.5)),
-                        subtitle: Text(
-                          switch (app.key) {
-                            'cmb' => '入账/支出短信通知自动入账',
-                            'wechat' => '微信支付/收款通知自动入账',
-                            _ => '支出/收入通知自动入账',
-                          },
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: cs.onSurfaceVariant
-                                  .withValues(alpha: 0.8)),
-                        ),
-                        value: widget.ctrl.autoApps[app.key] ?? true,
-                        onChanged: (v) =>
-                            widget.ctrl.setAutoApp(app.key, v),
+          Obx(() => AnimatedSize(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: !widget.ctrl.autoAccounting.value
+                    ? const SizedBox(width: double.infinity)
+                    : Column(
+                        children: [
+                          const Divider(height: 1),
+                          for (final app
+                              in AutoBookkeepingService.supportedApps)
+                            SwitchListTile(
+                              secondary: Icon(
+                                app.key == 'alipay'
+                                    ? Icons.currency_yuan_rounded
+                                    : app.key == 'wechat'
+                                        ? Icons.wechat
+                                        : Icons.account_balance_rounded,
+                                color: cs.primary.withValues(alpha: 0.8),
+                                size: 20,
+                              ),
+                              dense: true,
+                              title: Text(app.name,
+                                  style: const TextStyle(fontSize: 13.5)),
+                              subtitle: Text(
+                                switch (app.key) {
+                                  'cmb' => '入账/支出短信通知自动入账',
+                                  'wechat' => '微信支付/收款通知自动入账',
+                                  _ => '支出/收入通知自动入账',
+                                },
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant
+                                        .withValues(alpha: 0.8)),
+                              ),
+                              value: widget.ctrl.autoApps[app.key] ?? true,
+                              onChanged: (v) =>
+                                  widget.ctrl.setAutoApp(app.key, v),
+                            ),
+                          const Divider(height: 1),
+                          SwitchListTile(
+                            secondary: Icon(
+                                Icons.assignment_return_outlined,
+                                color: cs.primary,
+                                size: 20),
+                            dense: true,
+                            title: const Text('自动记录退款',
+                                style: TextStyle(fontSize: 13.5)),
+                            subtitle: Text('识别到退款通知时自动记为收入',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant
+                                        .withValues(alpha: 0.8))),
+                            value: widget.ctrl.autoRefund.value,
+                            onChanged: (v) =>
+                                widget.ctrl.setAutoRefund(v),
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            dense: true,
+                            leading: Icon(Icons.battery_saver_rounded,
+                                color: cs.primary, size: 20),
+                            title: const Text('后台常驻设置',
+                                style: TextStyle(fontSize: 13.5)),
+                            subtitle: Text('忽略电池优化 / 自启动，避免后台被清理',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant
+                                        .withValues(alpha: 0.8))),
+                            trailing:
+                                const Icon(Icons.chevron_right, size: 18),
+                            onTap: showKeepAliveGuide,
+                          ),
+                        ],
                       ),
-                  ],
-                )),
-            const Divider(height: 1),
-            Obx(() => SwitchListTile(
-                  secondary: Icon(Icons.assignment_return_outlined,
-                      color: cs.primary, size: 20),
-                  dense: true,
-                  title: const Text('自动记录退款',
-                      style: TextStyle(fontSize: 13.5)),
-                  subtitle: Text('识别到退款通知时自动记为收入',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color:
-                              cs.onSurfaceVariant.withValues(alpha: 0.8))),
-                  value: widget.ctrl.autoRefund.value,
-                  onChanged: (v) => widget.ctrl.setAutoRefund(v),
-                )),
-            const Divider(height: 1),
-            ListTile(
-              dense: true,
-              leading: Icon(Icons.battery_saver_rounded,
-                  color: cs.primary, size: 20),
-              title: const Text('后台常驻设置',
-                  style: TextStyle(fontSize: 13.5)),
-              subtitle: Text('忽略电池优化 / 自启动，避免后台被清理',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
-              trailing: const Icon(Icons.chevron_right, size: 18),
-              onTap: showKeepAliveGuide,
-            ),
-          ],
+              )),
           const Divider(height: 1),
           Obx(() => ListTile(
                 dense: true,
