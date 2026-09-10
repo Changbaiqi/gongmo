@@ -41,7 +41,7 @@ class SettingsController extends GetxController {
     final raw = _sync.readConfig('auto_apps');
     for (final app in AutoBookkeepingService.supportedApps) {
       autoApps[app.key] =
-          raw is Map ? raw[app.key] == true : true; // 默认开启
+          raw is Map ? raw[app.key] != false : true; // 未配置的应用默认开启
     }
     await refreshAutoAccountingStatus();
   }

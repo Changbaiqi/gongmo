@@ -681,7 +681,9 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                         secondary: Icon(
                           app.key == 'alipay'
                               ? Icons.currency_yuan_rounded
-                              : Icons.account_balance_rounded,
+                              : app.key == 'wechat'
+                                  ? Icons.wechat
+                                  : Icons.account_balance_rounded,
                           color: cs.primary.withValues(alpha: 0.8),
                           size: 20,
                         ),
@@ -689,9 +691,11 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                         title: Text(app.name,
                             style: const TextStyle(fontSize: 13.5)),
                         subtitle: Text(
-                          app.key == 'cmb'
-                              ? '入账/支出短信通知自动入账'
-                              : '支出/收入通知自动入账',
+                          switch (app.key) {
+                            'cmb' => '入账/支出短信通知自动入账',
+                            'wechat' => '微信支付/收款通知自动入账',
+                            _ => '支出/收入通知自动入账',
+                          },
                           style: TextStyle(
                               fontSize: 11,
                               color: cs.onSurfaceVariant

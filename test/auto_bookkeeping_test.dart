@@ -42,7 +42,69 @@ void main() {
     expect(r.$2, 1000.00);
   });
 
+  test('解析支付宝支出（含立减权益文案）', () {
+    final r =
+        AutoBookkeepingService.parseAlipay('你有一笔1.50元的支出，领立减1.08元权益。');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 1.50);
+  });
+
+  test('解析支付宝支出（关键词在前）', () {
+    final r = AutoBookkeepingService.parseAlipay('支出1.50元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 1.50);
+  });
+
+  test('解析支付宝消费（人民币）', () {
+    final r = AutoBookkeepingService.parseAlipay('您本次消费人民币25.00元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 25.00);
+  });
+
+  test('解析支付宝支出（千分位金额）', () {
+    final r = AutoBookkeepingService.parseAlipay('你有一笔1,234.50元的支出');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 1234.50);
+  });
+
   test('无关文本返回 null', () {
     expect(AutoBookkeepingService.parseAlipay('今日天气不错，适合出行。'), isNull);
+  });
+
+  test('解析微信已支付通知', () {
+    final r = AutoBookkeepingService.parseWechat('微信支付 已支付￥24.81');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 24.81);
+  });
+
+  test('解析微信已成功支付（元）通知', () {
+    final r = AutoBookkeepingService.parseWechat('你已成功支付24.81元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 24.81);
+  });
+
+  test('解析微信向商户付款通知（含商户名）', () {
+    final r = AutoBookkeepingService.parseWechat('向星巴克付款￥35.00');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 35.00);
+    expect(r.$3, '星巴克');
+  });
+
+  test('解析微信收款到账通知', () {
+    final r = AutoBookkeepingService.parseWechat('微信支付收款12.34元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 12.34);
+  });
+
+  test('微信无关文本返回 null', () {
+    expect(AutoBookkeepingService.parseWechat('今晚一起吃饭吗'), isNull);
   });
 }
