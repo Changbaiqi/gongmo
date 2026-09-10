@@ -1025,7 +1025,8 @@ class _KeepAliveDialog extends StatefulWidget {
   State<_KeepAliveDialog> createState() => _KeepAliveDialogState();
 }
 
-class _KeepAliveDialogState extends State<_KeepAliveDialog> {
+class _KeepAliveDialogState extends State<_KeepAliveDialog>
+    with WidgetsBindingObserver {
   bool _ignoring = false;
   bool _loaded = false;
   bool _busy = false;
@@ -1033,7 +1034,20 @@ class _KeepAliveDialogState extends State<_KeepAliveDialog> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统设置返回后刷新授权状态
+    if (state == AppLifecycleState.resumed) _refresh();
   }
 
   Future<void> _refresh() async {
@@ -1050,9 +1064,19 @@ class _KeepAliveDialogState extends State<_KeepAliveDialog> {
   Future<void> _request() async {
     if (_busy) return;
     setState(() => _busy = true);
-    await KeepAliveService.instance.requestIgnoreBatteryOptimizations();
+    final ok = await KeepAliveService.instance
+        .requestIgnoreBatteryOptimizations();
     await _refresh();
-    if (mounted) setState(() => _busy = false);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok) {
+      Get.snackbar('已忽略电池优化', '应用在后台会更稳定');
+    } else {
+      Get.snackbar('未能自动设置',
+          '部分手机不会弹出系统对话框，已为你打开电池设置，请手动允许「不限制 / 忽略优化」');
+      // 兜底：直接跳到电池优化设置列表
+      await KeepAliveService.instance.openBatterySettings();
+    }
   }
 
   @override
@@ -1112,11 +1136,23 @@ class _KeepAliveDialogState extends State<_KeepAliveDialog> {
         if (!_ignoring)
           TextButton(
             onPressed: _busy ? null : _request,
-            child: const Text('忽略电池优化'),
+            child: _busy
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('忽略电池优化'),
           ),
         ElevatedButton(
-          onPressed: () =>
-              KeepAliveService.instance.openSystemAppSettings(),
+          onPressed: () async {
+            final ok =
+                await KeepAliveService.instance.openSystemAppSettings();
+            if (!ok && mounted) {
+              Get.snackbar('无法打开设置',
+                  '请手动进入系统设置 → 应用管理 → 工墨，开启自启动与后台运行');
+            }
+          },
           child: const Text('打开应用设置'),
         ),
       ],
