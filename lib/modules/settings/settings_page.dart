@@ -9,6 +9,8 @@ import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
 import '../../data/services/github_sync_service.dart';
+import '../../data/services/keep_alive_service.dart';
+import '../../data/services/reminder_service.dart';
 import '../lock/lock_controller.dart';
 import '../lock/pattern_setup_page.dart';
 import 'settings_controller.dart';
@@ -35,9 +37,12 @@ class SettingsPage extends StatelessWidget {
           _Entrance(index: 2, child: _buildSectionTitle('自动记账')),
           _Entrance(index: 3, child: _AutoAccountingCard(ctrl: ctrl)),
           const SizedBox(height: 24),
-          _Entrance(index: 4, child: _buildSectionTitle('GitHub 连接')),
+          _Entrance(index: 4, child: _buildSectionTitle('记账提醒')),
+          _Entrance(index: 5, child: const _ReminderCard()),
+          const SizedBox(height: 24),
+          _Entrance(index: 6, child: _buildSectionTitle('GitHub 连接')),
           _Entrance(
-              index: 5,
+              index: 7,
               child: Card(
             child: Column(
               children: [
@@ -82,12 +87,12 @@ class SettingsPage extends StatelessWidget {
             ),
           )),
           const SizedBox(height: 24),
-          _Entrance(index: 6, child: _buildSectionTitle('安全')),
-          _Entrance(index: 7, child: _buildSecurityCard(context)),
+          _Entrance(index: 8, child: _buildSectionTitle('安全')),
+          _Entrance(index: 9, child: _buildSecurityCard(context)),
           const SizedBox(height: 24),
-          _Entrance(index: 8, child: _buildSectionTitle('关于')),
+          _Entrance(index: 10, child: _buildSectionTitle('关于')),
           _Entrance(
-              index: 9,
+              index: 11,
               child: Card(
             child: Column(
               children: [
@@ -670,7 +675,15 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                       color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
                 ),
                 value: widget.ctrl.autoAccounting.value,
-                onChanged: (v) => widget.ctrl.setAutoAccounting(v),
+                onChanged: (v) async {
+                  await widget.ctrl.setAutoAccounting(v);
+                  // 开启时顺带提示常驻设置（非强制，且已设置过则不再打扰）
+                  if (v && mounted) {
+                    final ignoring = await KeepAliveService.instance
+                        .isIgnoringBatteryOptimizations();
+                    if (mounted && !ignoring) showKeepAliveGuide();
+                  }
+                },
               )),
           if (widget.ctrl.autoAccounting.value) ...[
             const Divider(height: 1),
@@ -722,6 +735,20 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                   value: widget.ctrl.autoRefund.value,
                   onChanged: (v) => widget.ctrl.setAutoRefund(v),
                 )),
+            const Divider(height: 1),
+            ListTile(
+              dense: true,
+              leading: Icon(Icons.battery_saver_rounded,
+                  color: cs.primary, size: 20),
+              title: const Text('后台常驻设置',
+                  style: TextStyle(fontSize: 13.5)),
+              subtitle: Text('忽略电池优化 / 自启动，避免后台被清理',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+              trailing: const Icon(Icons.chevron_right, size: 18),
+              onTap: showKeepAliveGuide,
+            ),
           ],
           const Divider(height: 1),
           Obx(() => ListTile(
@@ -862,6 +889,258 @@ class _PulseIconState extends State<_PulseIcon>
         CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
       ),
       child: Icon(widget.icon, color: widget.color),
+    );
+  }
+}
+
+/// 每日记账提醒：开关 + 提醒时间
+class _ReminderCard extends StatefulWidget {
+  const _ReminderCard();
+
+  @override
+  State<_ReminderCard> createState() => _ReminderCardState();
+}
+
+class _ReminderCardState extends State<_ReminderCard> {
+  final ReminderService _reminder = ReminderService.instance;
+  bool _enabled = false;
+  int _hour = ReminderService.defaultHour;
+  int _minute = ReminderService.defaultMinute;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _enabled = _reminder.enabled;
+    _hour = _reminder.hour;
+    _minute = _reminder.minute;
+  }
+
+  String get _timeText =>
+      '${_hour.toString().padLeft(2, '0')}:${_minute.toString().padLeft(2, '0')}';
+
+  Future<void> _toggle(bool v) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      if (v) {
+        final ok = await _reminder.requestPermission();
+        if (!ok) {
+          Get.snackbar('无法开启', '请在系统设置中允许「工墨」发送通知');
+          return;
+        }
+      }
+      await _reminder.setEnabled(v);
+      if (mounted) setState(() => _enabled = v);
+      Get.snackbar(v ? '已开启记账提醒' : '已关闭记账提醒',
+          v ? '每天 $_timeText 提醒你记账' : '将不再发送记账提醒');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _hour, minute: _minute),
+    );
+    if (t == null) return;
+    await _reminder.setTime(t.hour, t.minute);
+    if (!mounted) return;
+    setState(() {
+      _hour = t.hour;
+      _minute = t.minute;
+    });
+    if (_enabled) {
+      Get.snackbar('提醒时间已更新', '每天 $_timeText 提醒你记账');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: Icon(Icons.alarm_rounded, color: cs.primary),
+            title: const Text('每日记账提醒'),
+            subtitle: Text(
+              _enabled ? '每天 $_timeText 提醒你记账' : '开启后每天定时提醒记账',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+            ),
+            value: _enabled,
+            onChanged: _toggle,
+          ),
+          if (_enabled) ...[
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.schedule_rounded, color: cs.primary),
+              title: const Text('提醒时间'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_timeText,
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary,
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ])),
+                  const Icon(Icons.chevron_right, size: 18),
+                ],
+              ),
+              onTap: _pickTime,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 后台常驻设置指引（非强制）
+void showKeepAliveGuide() {
+  Get.dialog(const _KeepAliveDialog());
+}
+
+class _KeepAliveDialog extends StatefulWidget {
+  const _KeepAliveDialog();
+
+  @override
+  State<_KeepAliveDialog> createState() => _KeepAliveDialogState();
+}
+
+class _KeepAliveDialogState extends State<_KeepAliveDialog> {
+  bool _ignoring = false;
+  bool _loaded = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final v = await KeepAliveService.instance
+        .isIgnoringBatteryOptimizations();
+    if (mounted) {
+      setState(() {
+        _ignoring = v;
+        _loaded = true;
+      });
+    }
+  }
+
+  Future<void> _request() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await KeepAliveService.instance.requestIgnoreBatteryOptimizations();
+    await _refresh();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.battery_charging_full_rounded, color: cs.primary),
+          const SizedBox(width: 8),
+          const Text('保持后台运行'),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '自动记账依赖通知监听。部分手机在后台会清理应用，'
+              '下面的设置为可选，建议开启以免漏记：',
+              style: TextStyle(
+                  fontSize: 12.5, height: 1.5, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  _ignoring
+                      ? Icons.check_circle_rounded
+                      : Icons.error_outline_rounded,
+                  size: 16,
+                  color: _ignoring
+                      ? Colors.green.shade600
+                      : Colors.orange.shade700,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _loaded
+                      ? (_ignoring ? '电池优化：已忽略（推荐）' : '电池优化：未设置')
+                      : '电池优化：检测中...',
+                  style: const TextStyle(
+                      fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _step(cs, '1', '点击「忽略电池优化」，在系统弹窗中选择「允许」'),
+            _step(cs, '2', '进入「应用设置」，将省电策略设为「无限制」'),
+            _step(cs, '3', '在「自启动管理」中允许「工墨」自启动'),
+            _step(cs, '4', '在最近任务界面锁定工墨，避免被一键清理'),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Get.back(), child: const Text('知道了')),
+        if (!_ignoring)
+          TextButton(
+            onPressed: _busy ? null : _request,
+            child: const Text('忽略电池优化'),
+          ),
+        ElevatedButton(
+          onPressed: () =>
+              KeepAliveService.instance.openSystemAppSettings(),
+          child: const Text('打开应用设置'),
+        ),
+      ],
+    );
+  }
+
+  Widget _step(ColorScheme cs, String n, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 16,
+            height: 16,
+            margin: const EdgeInsets.only(top: 1),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Text(n,
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: cs.primary)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    fontSize: 12, height: 1.4, color: cs.onSurfaceVariant)),
+          ),
+        ],
+      ),
     );
   }
 }

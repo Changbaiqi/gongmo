@@ -44,6 +44,10 @@ dependencies:
   flutter_notification_listener: ^1.4.0
   local_auth: ^2.3.0
   crypto: ^3.0.6
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
+  flutter_timezone: ^4.1.0
+  permission_handler: ^11.3.1
   flutter_localizations:
     sdk: flutter
 

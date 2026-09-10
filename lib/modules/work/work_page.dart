@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import '../../app/routes/app_routes.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/icon_utils.dart';
 import '../../core/widgets/flip_clock.dart';
@@ -210,7 +211,40 @@ class _WorkPageState extends State<WorkPage> {
         pill('正计时', 0),
         const SizedBox(width: 8),
         pill('打卡', 1),
+        const SizedBox(width: 8),
+        _buildTimeMoreButton(cs),
       ],
+    );
+  }
+
+  /// 打卡右侧的「更多」入口：跳转到时间工具的更多页
+  Widget _buildTimeMoreButton(ColorScheme cs) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        Get.toNamed(AppRoutes.timeMore);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+        decoration: BoxDecoration(
+          color: cs.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.grid_view_rounded,
+                size: 15, color: cs.onSurfaceVariant),
+            const SizedBox(width: 5),
+            Text('更多',
+                style:
+                    TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          ],
+        ),
+      ),
     );
   }
 

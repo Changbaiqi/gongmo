@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gongmo/core/widgets/pattern_lock.dart';
+import 'package:gongmo/modules/work/stopwatch_page.dart';
 
 void main() {
   testWidgets('图案锁渲染并回调拖拽选中的点', (WidgetTester tester) async {
@@ -28,5 +29,27 @@ void main() {
 
     expect(completed, isNotNull);
     expect(completed, [0, 1]);
+  });
+
+  testWidgets('秒表：开始/计次/复位不报错（多 AnimationController）',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: StopwatchPage()));
+    expect(find.text('秒表'), findsOneWidget);
+
+    // 开始：会同时使用 _pulse 与 _pop 两个 AnimationController
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+
+    // 计次：触发 _pop 缩放动画
+    await tester.tap(find.byIcon(Icons.flag_rounded));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // 暂停后左侧按钮变为「复位」
+    await tester.tap(find.byIcon(Icons.pause_rounded));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byIcon(Icons.refresh_rounded));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
   });
 }

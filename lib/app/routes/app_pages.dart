@@ -7,6 +7,10 @@ import '../../modules/more/invoice_page.dart';
 import '../../modules/more/more_page.dart';
 import '../../modules/more/salary_page.dart';
 import '../../modules/splash/splash_page.dart';
+import '../../modules/work/stopwatch_page.dart';
+import '../../modules/work/time_more_page.dart';
+import '../../modules/work/timezone_converter_page.dart';
+import '../../modules/work/timezone_overlap_page.dart';
 import '../../modules/work/work_page.dart';
 import '../../modules/finance/finance_page.dart';
 import '../../modules/sync/sync_page.dart';
@@ -64,6 +68,22 @@ class AppPages {
     GetPage(
       name: AppRoutes.salary,
       page: () => const SalaryPage(),
+    ),
+    GetPage(
+      name: AppRoutes.timeMore,
+      page: () => const TimeMorePage(),
+    ),
+    GetPage(
+      name: AppRoutes.stopwatch,
+      page: () => const StopwatchPage(),
+    ),
+    GetPage(
+      name: AppRoutes.timezones,
+      page: () => const TimezoneOverlapPage(),
+    ),
+    GetPage(
+      name: AppRoutes.tzConverter,
+      page: () => const TimezoneConverterPage(),
     ),
   ];
 }

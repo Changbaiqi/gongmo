@@ -9,6 +9,7 @@ import 'app/routes/app_routes.dart';
 import 'app/theme/app_theme.dart';
 import 'app/theme/theme_controller.dart';
 import 'data/services/auto_bookkeeping_service.dart';
+import 'data/services/reminder_service.dart';
 import 'data/services/storage_service.dart';
 import 'modules/lock/lock_controller.dart';
 import 'modules/sync/sync_controller.dart';
@@ -36,6 +37,13 @@ void main() async {
   final lock = Get.put(LockController(), permanent: true); // 应用锁（图案/指纹）
   await lock.init();
   Get.put(SyncController()); // 注册自动同步引擎
+  // 每日记账提醒：启动时确保定时调度存在
+  try {
+    await ReminderService.instance.init();
+    if (ReminderService.instance.enabled) {
+      await ReminderService.instance.scheduleDaily();
+    }
+  } catch (_) {}
   AutoBookkeepingService.instance.startIfNeeded(); // 若开关开启则启动监听服务
 
   runApp(const GongMoApp());
