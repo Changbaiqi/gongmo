@@ -155,7 +155,7 @@ class _StopwatchPageState extends State<StopwatchPage>
   void _loadRecord(_StopwatchRecord rec) {
     HapticFeedback.mediumImpact();
     _saveCurrentAsRecord();
-    _stopTicking();
+    _stopAndClear();
     setState(() {
       _base = Duration(milliseconds: rec.totalMs);
       _laps.clear();
@@ -185,6 +185,12 @@ class _StopwatchPageState extends State<StopwatchPage>
     _ticker = null;
     _pulse.animateBack(0, duration: const Duration(milliseconds: 260));
     _wakelock(false);
+  }
+
+  /// 停止并清零（复位 / 载入历史记录时使用）
+  void _stopAndClear() {
+    _stopTicking();
+    _sw.reset();
   }
 
   void _wakelock(bool on) {
@@ -225,7 +231,7 @@ class _StopwatchPageState extends State<StopwatchPage>
   void _reset() {
     HapticFeedback.mediumImpact();
     _saveCurrentAsRecord(); // 复位即保存一次历史
-    _stopTicking();
+    _stopAndClear();
     setState(() {
       _base = Duration.zero;
       _lapSeq = 0;

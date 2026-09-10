@@ -327,28 +327,32 @@ class _HomePageState extends State<HomePage>
               child: ValueListenableBuilder<double>(
                 valueListenable: _balanceCollapse,
                 builder: (context, t, _) {
-                  // 静止时测量卡片自然高度（含预算进度条等动态内容）
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (t < 0.01) {
+                  // 静止时直接渲染卡片：高度由内容决定，
+                  // 预算区展开/收起时下方内容会平滑跟随移动。
+                  if (t < 0.01 || _balanceCardHeight <= 0) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
                       final h = _balanceKey.currentContext?.size?.height;
                       if (h != null && h > 0) _balanceCardHeight = h;
-                    }
-                  });
+                    });
+                    return _buildBalanceCard(key: _balanceKey);
+                  }
+                  // 滚动折叠：用缓存高度做翻转收缩
                   final visibleH = max(0.0, _balanceCardHeight * (1 - t));
                   if (visibleH < 0.5) return const SizedBox.shrink();
                   return LayoutBuilder(
                     builder: (context, cons) {
                       return SizedBox(
                         height: visibleH,
-                        child: ClipRect(
-                          // OverflowBox：卡片保持自然高度参与翻转，避免内部 Flex 溢出断言；
-                          // 超出可见区域的部分由 ClipRect 裁掉
+                        child: ClipRRect(
+                          // 圆角裁剪：折叠过程中也不会在底部露出直角切口
+                          borderRadius: BorderRadius.circular(20),
                           child: OverflowBox(
                             alignment: Alignment.topCenter,
                             minWidth: 0,
                             maxWidth: cons.maxWidth,
                             minHeight: 0,
-                            maxHeight: _balanceCardHeight,
+                            maxHeight: _balanceCardHeight + 160,
                             child: Opacity(
                               opacity: (1 - t).clamp(0.0, 1.0),
                               child: Transform(
@@ -523,38 +527,52 @@ class _HomePageState extends State<HomePage>
                     final preview = (typed != null && typed > 0)
                         ? typed
                         : _dc.totalBudgetAmount;
-                    final ratio = preview > 0
-                        ? _dc.monthExpense.value / preview
-                        : 0.0;
-                    return TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0, end: ratio),
-                      duration: const Duration(milliseconds: 420),
-                      curve: Curves.easeOutCubic,
-                      builder: (context, value, _) => _BudgetRing(
-                        progress: value,
-                        progressColor: cs.primary,
-                        trackColor: cs.surfaceContainerHighest,
-                        center: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              preview > 0
-                                  ? '${(value * 100).round()}%'
-                                  : '--',
-                              style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: cs.onSurface),
+                    final used = _dc.monthExpense.value;
+                    final ratio = preview > 0 ? used / preview : 0.0;
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: ratio),
+                          duration: const Duration(milliseconds: 420),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, value, _) => _BudgetRing(
+                            progress: value,
+                            progressColor: cs.primary,
+                            trackColor: cs.surfaceContainerHighest,
+                            center: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  preview > 0
+                                      ? '¥${preview.toStringAsFixed(0)}'
+                                      : '--',
+                                  style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: cs.onSurface),
+                                ),
+                                const SizedBox(height: 2),
+                                Text('总预算',
+                                    style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: cs.onSurfaceVariant
+                                            .withValues(alpha: 0.8))),
+                              ],
                             ),
-                            const SizedBox(height: 2),
-                            Text('已使用',
-                                style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: cs.onSurfaceVariant
-                                        .withValues(alpha: 0.8))),
-                          ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        Text(
+                          preview > 0
+                              ? '已使用 ¥${used.toStringAsFixed(2)}（${(ratio * 100).round()}%）'
+                              : '输入额度后显示使用情况',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant
+                                  .withValues(alpha: 0.85)),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -683,7 +701,13 @@ class _HomePageState extends State<HomePage>
           ),
         ],
       ),
-    );
+    ).whenComplete(() {
+      // 若通过点空白处/返回键关闭（未点「完成」），也把输入的额度应用上
+      if (!closing) {
+        final err = applyTotal();
+        if (err != null) Get.snackbar('无法保存', err);
+      }
+    });
   }
 
   /// 添加/编辑某分类的预算额度
@@ -847,6 +871,8 @@ class _HomePageState extends State<HomePage>
       final onPrimary = cs.onPrimary;
       return Container(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+        // 让子内容也按圆角裁剪，避免底部出现直角/尖角
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -866,6 +892,7 @@ class _HomePageState extends State<HomePage>
           ],
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -949,7 +976,15 @@ class _HomePageState extends State<HomePage>
                 ],
               ],
             ),
-            if (_dc.budgets.isNotEmpty || _dc.totalBudget.value > 0) ...[
+            AnimatedSize(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: !(_dc.budgets.isNotEmpty ||
+                      _dc.totalBudget.value > 0)
+                  ? const SizedBox(width: double.infinity)
+                  : Column(
+                      children: [
               const SizedBox(height: 12),
               Container(height: 1, color: onPrimary.withValues(alpha: 0.18)),
               const SizedBox(height: 12),
@@ -1128,7 +1163,9 @@ class _HomePageState extends State<HomePage>
                   );
                 }),
               ),
-            ],
+                      ],
+                    ),
+            ),
           ],
         ),
       );
