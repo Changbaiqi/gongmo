@@ -239,7 +239,8 @@ class AutoBookkeepingService {
       }
     }
     // 退款：如"微信支付退款到账￥24.81" / "退款￥24.81已原路退回"
-    if (text.contains('退款') || text.contains('退回')) {
+    if ((text.contains('退款') || text.contains('退回')) &&
+        !text.contains('失败')) {
       for (final re in [
         RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元的?退款'),
         RegExp(r'退款[^0-9]{0,8}[￥¥]?\s*([0-9]+(?:\.[0-9]+)?)'),
@@ -252,6 +253,14 @@ class AutoBookkeepingService {
           if (v != null && v > 0 && v < _maxAmount) {
             return (FinanceType.income, v, null);
           }
+        }
+      }
+      // 兜底：含退款字样且能取到 "X元" 的金额
+      final m = RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元').firstMatch(text);
+      if (m != null) {
+        final v = double.tryParse(m.group(1) ?? '');
+        if (v != null && v > 0 && v < _maxAmount) {
+          return (FinanceType.income, v, null);
         }
       }
     }

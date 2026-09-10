@@ -90,6 +90,10 @@ void main() {
     expect(r.$2, 16.9);
   });
 
+  test('退款失败文案不入账', () {
+    expect(AutoBookkeepingService.parseAlipay('退款失败，原路退回你支付的1.50元'), isNull);
+  });
+
   test('解析微信已支付通知', () {
     final r = AutoBookkeepingService.parseWechat('微信支付 已支付￥24.81');
     expect(r, isNotNull);
