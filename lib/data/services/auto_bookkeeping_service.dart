@@ -54,6 +54,9 @@ class AutoBookkeepingService {
 
   bool get enabled => _storage.getConfig('auto_accounting') == true;
 
+  /// 是否自动记录退款（默认开启）
+  bool get refundEnabled => _storage.getConfig('auto_refund') != false;
+
   Future<bool> hasPermission() async =>
       await NotificationsListener.hasPermission ?? false;
 
@@ -129,6 +132,10 @@ class AutoBookkeepingService {
       if (parsed == null) return;
       final (type, amount, merchant) = parsed;
 
+      // 退款：按开关决定是否记录
+      final isRefund = full.contains('退款') || full.contains('退回');
+      if (isRefund && !refundEnabled) return;
+
       // 去重：同一笔交易常发多条通知（横幅 + 常驻）
       final dedupKey =
           '$pkg|$full|${DateTime.now().millisecondsSinceEpoch ~/ 60000}';
@@ -142,9 +149,11 @@ class AutoBookkeepingService {
         type: type,
         amount: amount,
         categoryId: type == FinanceType.expense ? 'exp_5' : 'inc_3',
-        description: merchant != null
-            ? '自动记账 · $merchant'
-            : '自动记账 · ${app.name}',
+        description: isRefund
+            ? '自动记账 · 退款'
+            : merchant != null
+                ? '自动记账 · $merchant'
+                : '自动记账 · ${app.name}',
         date: DateTime.now(),
         notificationSrc: app.key,
       );
@@ -229,6 +238,23 @@ class AutoBookkeepingService {
         }
       }
     }
+    // 退款：如"微信支付退款到账￥24.81" / "退款￥24.81已原路退回"
+    if (text.contains('退款') || text.contains('退回')) {
+      for (final re in [
+        RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元的?退款'),
+        RegExp(r'退款[^0-9]{0,8}[￥¥]?\s*([0-9]+(?:\.[0-9]+)?)'),
+        RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元[^0-9]{0,8}(?:原路退回|已退回)'),
+        RegExp(r'[￥¥]\s*([0-9]+(?:\.[0-9]+)?)[^0-9]{0,8}(?:退款|退回)'),
+      ]) {
+        final m = re.firstMatch(text);
+        if (m != null) {
+          final v = double.tryParse(m.group(1) ?? '');
+          if (v != null && v > 0 && v < _maxAmount) {
+            return (FinanceType.income, v, null);
+          }
+        }
+      }
+    }
     // 收入（带对方名）：已收到 XX 的转账/红包/收款 ￥xx
     final fromOthers = RegExp(
             r'(?:已收到|收到)(.{1,30}?)的(?:转账|付款|红包|收款)\s*[￥¥]?\s*([0-9]+(?:\.[0-9]+)?)')
@@ -283,6 +309,31 @@ class AutoBookkeepingService {
         final v = double.tryParse(m.group(1) ?? '');
         if (v != null && v > 0 && v < _maxAmount) {
           return (FinanceType.expense, v, null);
+        }
+      }
+    }
+    // 退款：如"你有一笔1.50元的退款" / "你收到一笔16.9元退款，点击查看账单详情！"
+    if ((t.contains('退款') || t.contains('退回')) && !t.contains('失败')) {
+      for (final re in [
+        RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元的?退款'),
+        RegExp(r'退款[^0-9]{0,8}[￥¥]?\s*([0-9]+(?:\.[0-9]+)?)'),
+        RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元[^0-9]{0,8}(?:原路退回|已退回)'),
+        RegExp(r'[￥¥]\s*([0-9]+(?:\.[0-9]+)?)[^0-9]{0,8}(?:退款|退回)'),
+      ]) {
+        final m = re.firstMatch(t);
+        if (m != null) {
+          final v = double.tryParse(m.group(1) ?? '');
+          if (v != null && v > 0 && v < _maxAmount) {
+            return (FinanceType.income, v, null);
+          }
+        }
+      }
+      // 兜底：含退款字样且能取到 "X元" 的金额
+      final m = RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元').firstMatch(t);
+      if (m != null) {
+        final v = double.tryParse(m.group(1) ?? '');
+        if (v != null && v > 0 && v < _maxAmount) {
+          return (FinanceType.income, v, null);
         }
       }
     }

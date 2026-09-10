@@ -19,6 +19,12 @@ class MorePage extends StatelessWidget {
       '人民币换算常用货币',
       AppRoutes.exchange,
     ),
+    (
+      Icons.calculate_rounded,
+      '薪资计算器',
+      '五险一金与税后工资估算',
+      AppRoutes.salary,
+    ),
   ];
 
   @override

@@ -707,6 +707,21 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                       ),
                   ],
                 )),
+            const Divider(height: 1),
+            Obx(() => SwitchListTile(
+                  secondary: Icon(Icons.assignment_return_outlined,
+                      color: cs.primary, size: 20),
+                  dense: true,
+                  title: const Text('自动记录退款',
+                      style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text('识别到退款通知时自动记为收入',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color:
+                              cs.onSurfaceVariant.withValues(alpha: 0.8))),
+                  value: widget.ctrl.autoRefund.value,
+                  onChanged: (v) => widget.ctrl.setAutoRefund(v),
+                )),
           ],
           const Divider(height: 1),
           Obx(() => ListTile(

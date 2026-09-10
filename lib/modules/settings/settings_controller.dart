@@ -18,6 +18,9 @@ class SettingsController extends GetxController {
   final autoAccountingHasPermission = false.obs;
   final autoAccountingRunning = false.obs;
 
+  /// 是否自动记录退款
+  final autoRefund = true.obs;
+
   /// 分应用开关（alipay/cmb...），未设置的默认开启
   final autoApps = RxMap<String, bool>();
 
@@ -38,12 +41,19 @@ class SettingsController extends GetxController {
   /// 加载自动记账状态
   Future<void> loadAutoAccounting() async {
     autoAccounting.value = _sync.readConfig('auto_accounting') == true;
+    autoRefund.value = _sync.readConfig('auto_refund') != false;
     final raw = _sync.readConfig('auto_apps');
     for (final app in AutoBookkeepingService.supportedApps) {
       autoApps[app.key] =
           raw is Map ? raw[app.key] != false : true; // 未配置的应用默认开启
     }
     await refreshAutoAccountingStatus();
+  }
+
+  /// 设置是否自动记录退款
+  Future<void> setAutoRefund(bool v) async {
+    autoRefund.value = v;
+    await _sync.writeConfig('auto_refund', v);
   }
 
   /// 设置单个应用的自动记账开关

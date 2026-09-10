@@ -5,6 +5,7 @@ import '../../modules/lock/pattern_setup_page.dart';
 import '../../modules/more/exchange_rate_page.dart';
 import '../../modules/more/invoice_page.dart';
 import '../../modules/more/more_page.dart';
+import '../../modules/more/salary_page.dart';
 import '../../modules/splash/splash_page.dart';
 import '../../modules/work/work_page.dart';
 import '../../modules/finance/finance_page.dart';
@@ -59,6 +60,10 @@ class AppPages {
     GetPage(
       name: AppRoutes.exchange,
       page: () => const ExchangeRatePage(),
+    ),
+    GetPage(
+      name: AppRoutes.salary,
+      page: () => const SalaryPage(),
     ),
   ];
 }

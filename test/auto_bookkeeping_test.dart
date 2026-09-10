@@ -75,6 +75,21 @@ void main() {
     expect(AutoBookkeepingService.parseAlipay('今日天气不错，适合出行。'), isNull);
   });
 
+  test('解析支付宝退款通知', () {
+    final r = AutoBookkeepingService.parseAlipay('你有一笔1.50元的退款，已原路退回。');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 1.50);
+  });
+
+  test('解析支付宝收到退款通知', () {
+    final r =
+        AutoBookkeepingService.parseAlipay('你收到一笔16.9元退款，点击查看账单详情！');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 16.9);
+  });
+
   test('解析微信已支付通知', () {
     final r = AutoBookkeepingService.parseWechat('微信支付 已支付￥24.81');
     expect(r, isNotNull);
@@ -106,5 +121,12 @@ void main() {
 
   test('微信无关文本返回 null', () {
     expect(AutoBookkeepingService.parseWechat('今晚一起吃饭吗'), isNull);
+  });
+
+  test('解析微信退款到账通知', () {
+    final r = AutoBookkeepingService.parseWechat('微信支付退款到账￥24.81');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 24.81);
   });
 }
