@@ -422,51 +422,199 @@ class _WorkPageState extends State<WorkPage> {
         ? '${DateHelper.formatTime(entry.startTime)} - 进行中'
         : '${DateHelper.formatTime(entry.startTime)} - ${DateHelper.formatTime(entry.endTime!)}';
 
-    return Row(
-      children: [
-        Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Row(
-            children: [
-              Text(
-                  entry.projectName.isNotEmpty ? entry.projectName : '未命名',
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w500)),
-              if (tag != null && tag.isWork)
-                const Icon(Icons.star_rounded, size: 12, color: Colors.amber),
-              const SizedBox(width: 8),
-              Text(range,
-                  style: TextStyle(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                      fontSize: 11)),
-            ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () => _showEditEntryDialog(entry),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
           ),
-        ),
-        Text(
-          DateHelper.formatDuration(entry.duration ?? entry.liveElapsed),
-          style: TextStyle(
-              color: running
-                  ? cs.primary
-                  : cs.onSurfaceVariant.withValues(alpha: 0.7),
-              fontSize: 12,
-              fontWeight: running ? FontWeight.w600 : FontWeight.normal,
-              fontFeatures: const [FontFeature.tabularFigures()]),
-        ),
-        if (!running) ...[
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => _confirmDelete(entry),
-            child: Icon(Icons.close_rounded,
-                size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Row(
+              children: [
+                Text(
+                    entry.projectName.isNotEmpty ? entry.projectName : '未命名',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500)),
+                if (tag != null && tag.isWork)
+                  const Icon(Icons.star_rounded, size: 12, color: Colors.amber),
+                const SizedBox(width: 8),
+                Text(range,
+                    style: TextStyle(
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                        fontSize: 11)),
+              ],
+            ),
           ),
+          Text(
+            DateHelper.formatDuration(entry.duration ?? entry.liveElapsed),
+            style: TextStyle(
+                color: running
+                    ? cs.primary
+                    : cs.onSurfaceVariant.withValues(alpha: 0.7),
+                fontSize: 12,
+                fontWeight: running ? FontWeight.w600 : FontWeight.normal,
+                fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+          if (!running) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => _confirmDelete(entry),
+              child: Icon(Icons.close_rounded,
+                  size: 14,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+            ),
+          ],
+          const SizedBox(width: 6),
         ],
-        const SizedBox(width: 6),
-      ],
+      ),
+    );
+  }
+
+  /// 长按记录：弹出修改窗口
+  void _showEditEntryDialog(WorkEntry entry) {
+    final cs = Theme.of(context).colorScheme;
+    final nameCtrl = TextEditingController(text: entry.projectName);
+    final descCtrl = TextEditingController(text: entry.description);
+    final incomeCtrl = TextEditingController(
+        text: (entry.income != null && entry.income! > 0)
+            ? entry.income!.toStringAsFixed(2)
+            : '');
+    var start = entry.startTime;
+    final running = entry.endTime == null;
+    var end = entry.endTime;
+
+    String fmt(DateTime t) =>
+        '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} '
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+    Get.dialog(
+      StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> pick(bool isStart) async {
+            final base = isStart ? start : (end ?? DateTime.now());
+            final d = await showDatePicker(
+              context: context,
+              initialDate: base,
+              firstDate: DateTime(2020),
+              lastDate: DateTime.now().add(const Duration(days: 1)),
+            );
+            if (d == null || !context.mounted) return;
+            final t = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.fromDateTime(base),
+            );
+            if (t == null) return;
+            final picked =
+                DateTime(d.year, d.month, d.day, t.hour, t.minute);
+            setDialogState(() {
+              if (isStart) {
+                start = picked;
+              } else {
+                end = picked;
+              }
+            });
+          }
+
+          Widget timeRow(String label, DateTime? value, bool isStart) {
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(label, style: const TextStyle(fontSize: 13)),
+              trailing: Text(
+                value != null ? fmt(value) : '—',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: cs.primary,
+                    fontFeatures: const [FontFeature.tabularFigures()]),
+              ),
+              onTap: () => pick(isStart),
+            );
+          }
+
+          return AlertDialog(
+            title: const Text('修改记录'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                        labelText: '名称', isDense: true),
+                  ),
+                  const SizedBox(height: 10),
+                  timeRow('开始时间', start, true),
+                  if (!running) ...[
+                    const Divider(height: 1),
+                    timeRow('结束时间', end, false),
+                  ] else
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text('进行中的记录结束后才能修改结束时间',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant
+                                  .withValues(alpha: 0.7))),
+                    ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: incomeCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    decoration: const InputDecoration(
+                        labelText: '收入 (¥，选填)',
+                        prefixText: '¥ ',
+                        isDense: true),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: descCtrl,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                        labelText: '备注 (选填)', isDense: true),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Get.back(), child: const Text('取消')),
+              ElevatedButton(
+                onPressed: () {
+                  final name = nameCtrl.text.trim();
+                  if (name.isEmpty) {
+                    Get.snackbar('提示', '名称不能为空');
+                    return;
+                  }
+                  if (!running && end != null && !end!.isAfter(start)) {
+                    Get.snackbar('提示', '结束时间必须晚于开始时间');
+                    return;
+                  }
+                  final income =
+                      double.tryParse(incomeCtrl.text.trim()) ?? 0;
+                  _ctrl.updateEntry(entry.copyWith(
+                    projectName: name,
+                    description: descCtrl.text.trim(),
+                    startTime: start,
+                    endTime: end,
+                    income: income,
+                  ));
+                  Get.closeCurrentSnackbar();
+                  Get.back();
+                  Get.snackbar('已保存', '记录已更新');
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 

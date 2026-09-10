@@ -339,6 +339,13 @@ class WorkController extends GetxController {
     _refreshDashboard();
   }
 
+  /// 更新一条记录（长按编辑后保存）
+  void updateEntry(WorkEntry entry) {
+    _workRepo.save(entry);
+    loadEntries();
+    _refreshDashboard();
+  }
+
   void addTag(
     String name, {
     String icon = 'timer',
