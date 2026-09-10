@@ -37,19 +37,40 @@ void main() {
     expect(find.text('秒表'), findsOneWidget);
 
     // 开始：会同时使用 _pulse 与 _pop 两个 AnimationController
-    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded), warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
 
     // 计次：触发 _pop 缩放动画
-    await tester.tap(find.byIcon(Icons.flag_rounded));
+    await tester.tap(find.byIcon(Icons.flag_rounded), warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 400));
 
     // 暂停后左侧按钮变为「复位」
-    await tester.tap(find.byIcon(Icons.pause_rounded));
+    await tester.tap(find.byIcon(Icons.pause_rounded), warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.byIcon(Icons.refresh_rounded));
+    await tester.tap(find.byIcon(Icons.refresh_rounded), warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+  });
+
+  testWidgets('秒表：复位保存历史，可在历史弹窗查看',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: StopwatchPage()));
+
+    // 开始 → 计次 → 暂停 → 复位（复位即保存一条历史）
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.byIcon(Icons.flag_rounded), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byIcon(Icons.pause_rounded), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byIcon(Icons.refresh_rounded), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // 打开历史弹窗
+    await tester.tap(find.byIcon(Icons.history_rounded), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('秒表历史'), findsOneWidget);
+    expect(find.textContaining('次计次'), findsWidgets);
   });
 }
