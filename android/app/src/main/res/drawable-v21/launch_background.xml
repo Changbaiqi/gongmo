@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Modify this file to customize your launch splash screen -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="?android:colorBackground" />
+    <!-- 粉白渐变底：樱花牛奶色自上而下（颜色随日夜间自动切换） -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="@color/gm_splash_top"
+                android:centerColor="@color/gm_splash_center"
+                android:endColor="@color/gm_splash_bottom"
+                android:type="linear" />
+        </shape>
+    </item>
 
     <!-- 开屏 logo -->
     <item>

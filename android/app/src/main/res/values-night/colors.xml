@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ===== 粉白主题 · 夜间 ===== -->
+    <!-- 夜间沿用粉色气质，转为暖调深玫瑰灰（图标底板保持樱花粉，不随夜间变化） -->
+    <color name="gm_background">#251B21</color>
+
+    <!-- 开屏渐变：深玫瑰灰渐变 -->
+    <color name="gm_splash_top">#2D2129</color>
+    <color name="gm_splash_center">#251B21</color>
+    <color name="gm_splash_bottom">#1C141A</color>
+
+    <!-- 夜间系统栏 -->
+    <color name="gm_bar_fallback">#251B21</color>
+
+    <!-- 夜间强调色：雾粉系列 -->
+    <color name="gm_rose_300">#8A5A72</color>
+    <color name="gm_rose_400">#C47E9D</color>
+    <color name="gm_rose_500">#E5A0BC</color>
+    <color name="gm_rose_600">#F0BCD0</color>
+</resources>
