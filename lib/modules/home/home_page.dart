@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -873,20 +874,26 @@ class _HomePageState extends State<HomePage>
       return TiltCard(
         borderRadius: 20,
         shadowColor: cs.primary.withValues(alpha: 0.3),
-        child: Container(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-        // 让子内容也按圆角裁剪，避免底部出现直角/尖角
-        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
+          // 磨砂玻璃：半透明主色渐变 + 背景模糊 + 玻璃描边
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              cs.primary,
-              Color.lerp(cs.primary, onPrimary, 0.22)!,
+              cs.primary.withValues(alpha: 0.72),
+              Color.lerp(cs.primary, onPrimary, 0.22)!
+                  .withValues(alpha: 0.58),
             ],
           ),
           borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: Colors.white.withValues(alpha: 0.22), width: 1),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1164,6 +1171,8 @@ class _HomePageState extends State<HomePage>
                     ),
             ),
           ],
+        ),
+        ),
         ),
         ),
       );

@@ -51,6 +51,7 @@ class _ExchangeRatePageState extends State<ExchangeRatePage>
       _baseOptions.firstWhere((o) => o.$1 == _base, orElse: () => ('', '')).$2;
 
   final List<(String, String)> _currencies = const [
+    ('CNY', '人民币'),
     ('USD', '美元'),
     ('EUR', '欧元'),
     ('JPY', '日元'),
@@ -86,7 +87,11 @@ class _ExchangeRatePageState extends State<ExchangeRatePage>
     }
     final t = StorageService().getConfig(_cacheTimeKey);
     if (t is String && t.isNotEmpty) _updated = t;
-    if (_rates.isNotEmpty) _loading = false;
+    if (_rates.isNotEmpty) {
+      // 缓存是旧版本时可能没有人民币，这里补齐（换算时需要）
+      _rates['CNY'] = 1;
+      _loading = false;
+    }
   }
 
   Future<void> _fetchRates() async {
