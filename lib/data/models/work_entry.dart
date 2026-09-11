@@ -1,13 +1,38 @@
+// ============================================================
+// 工时记录模型（data/models）
+// 职责：正计时/打卡记录的数据结构、JSON 序列化与时长计算
+// 关联：StorageService（按年分片持久化 work_entries_{年}.json）、
+//       WorkController（创建/更新）、WorkStatsController（统计）
+// ============================================================
+
+/// 记录状态。
+/// inProgress=进行中（设计上同时最多一条）；completed=已完成；
+/// settled=已结算（预留历史状态，当前流程结束时直接置 completed）
 enum WorkStatus { inProgress, completed, settled }
 
+/// 一条工时/打卡记录。
+///
+/// 计时采用“分段累计”以支持暂停：暂停时把已计时长累加进
+/// [accumulatedSeconds]，继续时重置 [startTime]，因此总时长
+/// 始终 = accumulatedSeconds + (endTime - startTime)。
 class WorkEntry {
   final String id;
   DateTime startTime;
   DateTime? endTime;
+
+  /// 标签名；打卡记录为打卡时选中的标签名，缺省 "打卡"
   String projectName;
+
+  /// 备注
   String description;
+
+  /// 计时时使用的标签时薪（结算/展示用）
   double hourlyRate;
+
+  /// 结算后的收入；null 表示不计薪或尚未结算
   double? income;
+
+  /// 关联的收入账目 id（停止计时并生成账目后回填）
   String? financeEntryId;
   WorkStatus status;
   DateTime createdAt;
@@ -56,6 +81,7 @@ class WorkEntry {
     return base + DateTime.now().difference(startTime);
   }
 
+  /// 反序列化；旧数据没有 mode 字段时，按名称是否为 "打卡" 推断
   factory WorkEntry.fromJson(Map<String, dynamic> json) {
     final name = json['projectName'] as String? ?? '';
     return WorkEntry(
@@ -99,6 +125,8 @@ class WorkEntry {
     };
   }
 
+  /// 复制并修改字段；[clearPausedAt] 用于显式清除暂停态
+  /// （普通可空参数传 null 时会保留原值，无法表达“置空”）
   WorkEntry copyWith({
     DateTime? startTime,
     DateTime? endTime,

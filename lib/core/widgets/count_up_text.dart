@@ -1,3 +1,9 @@
+// ============================================================
+// 数字滚动文本组件（core/widgets）
+// 职责：金额等数字变化时播放 0→目标值（或当前值→目标值）的滚动动画
+// 关联：结余卡、统计汇总卡等
+// ============================================================
+
 import 'package:flutter/material.dart';
 
 /// 数字滚动动效文本：数值变化时从当前值平滑过渡；
@@ -41,6 +47,8 @@ class _CountUpTextState extends State<CountUpText>
     _ctrl.forward();
   }
 
+  /// 值变化时以“当前显示值”为起点继续滚动；
+  /// restartKey 变化（如切回页面）则从 0 重播加载动画
   @override
   void didUpdateWidget(covariant CountUpText oldWidget) {
     super.didUpdateWidget(oldWidget);

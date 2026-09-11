@@ -1,10 +1,18 @@
+// ============================================================
+// salary_page.dart（更多模块 · 薪资计算器）
+// 职责：根据税前月薪、缴费基数与专项附加扣除，按可配置的五险一金比例估算
+//       个人/单位缴纳额、月度个税与税后到手、公司总成本。
+// 关联：比例配置存 config.json 的 salary_config 键（StorageService 读写）；
+//       仅为估算工具，结果展示用 CountUpText。
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/widgets/count_up_text.dart';
 import '../../data/services/storage_service.dart';
 
-/// 五险一金条目：名称 + 个人缴纳比例 + 单位缴纳比例
+/// 五险一金条目：名称 + 个人缴纳比例 + 单位缴纳比例。
+/// 比例可变（用户在明细里点击修改），所以字段不是 final。
 class _SalaryItem {
   _SalaryItem(this.name, this.personal, this.company);
 
@@ -13,7 +21,10 @@ class _SalaryItem {
   double company;
 }
 
-/// 薪资计算器：输入税前月薪与五险一金构成，估算个人/单位缴纳与税后到手
+/// 薪资计算器：输入税前月薪与五险一金构成，估算个人/单位缴纳与税后到手。
+///
+/// 页面本地持有比例列表与输入控制器，所有计算在 build 时按需推导（getter），
+/// 不做缓存；修改比例或扣除项会立即保存到 config.json。
 class SalaryPage extends StatefulWidget {
   const SalaryPage({super.key});
 
@@ -33,6 +44,8 @@ class _SalaryPageState extends State<SalaryPage> {
 
   List<_SalaryItem> _items = _defaultItems();
 
+  // 默认比例按常见城市标准估算：养老 8%/16%、医疗 2%/9.5%、失业 0.5%/0.5%、
+  // 工伤与生育个人不缴、公积金 12%/12%（各地差异较大，用户可自行修改）
   static List<_SalaryItem> _defaultItems() => [
         _SalaryItem('养老保险', 0.08, 0.16),
         _SalaryItem('医疗保险', 0.02, 0.095),
@@ -62,6 +75,7 @@ class _SalaryPageState extends State<SalaryPage> {
 
   void _onChanged() => setState(() {});
 
+  /// 恢复上次保存的五险一金比例与专项附加扣除（无配置时用默认值）
   void _loadConfig() {
     final raw = StorageService().getConfig(_configKey);
     if (raw is! Map) return;
@@ -83,6 +97,7 @@ class _SalaryPageState extends State<SalaryPage> {
     if (d is num && d > 0) _deductCtrl.text = d.toStringAsFixed(0);
   }
 
+  /// 把当前比例与扣除项写回 config.json（修改比例后调用）
   void _saveConfig() {
     StorageService().setConfig(_configKey, {
       'items': [
@@ -111,17 +126,25 @@ class _SalaryPageState extends State<SalaryPage> {
   double get _companyTotal =>
       _items.fold(0.0, (s, i) => s + _base * i.company);
 
+  /// 应纳税所得额 = 税前月薪 − 个人五险一金 − 起征点 − 专项附加扣除，
+  /// 负数按 0 处理（不产生退税）
   double get _taxable =>
       (_gross - _personalTotal - _threshold - _deduction)
           .clamp(0.0, double.infinity);
 
   double get _tax => _monthlyTax(_taxable);
 
+  /// 税后到手 = 税前 − 个人五险一金 − 个税
   double get _net => _gross - _personalTotal - _tax;
 
+  /// 公司总成本 = 税前 + 单位缴纳的五险一金
   double get _companyCost => _gross + _companyTotal;
 
-  /// 月度个税（按月换算的综合所得税率表，速算扣除数）
+  /// 月度个税：按“综合所得月度税率表”分段计算。
+  ///
+  /// 每档用速算公式 `税额 = 应纳税所得额 × 税率 − 速算扣除数`，
+  /// 速算扣除数已把低档位差额折算好，因此无需逐档累加。
+  /// brackets 为 `(档位上限, 税率, 速算扣除数)`，最后一段用 infinity 收尾。
   static double _monthlyTax(double taxable) {
     if (taxable <= 0) return 0;
     const brackets = <(double, double, double)>[
@@ -443,6 +466,8 @@ class _SalaryPageState extends State<SalaryPage> {
 
   // ---------------- 编辑比例 ----------------
 
+  /// 编辑某一项的个人/单位缴纳比例（弹窗，输入单位为百分比）。
+  /// 校验 0-100 后按小数存回并持久化。
   void _editRates(int index) {
     final item = _items[index];
     final pCtrl =

@@ -1,9 +1,18 @@
+// ============================================================
+// finance/finance_page.dart（Finance 模块 · 独立账目页）
+// 职责：完整的账目列表页（月度汇总 + 全部流水 + 记一笔/删除），路由 /finance。
+// 关联：FinanceController（全局单例）、DateHelper；
+//       与 HomePage 内嵌的记账子页相互独立，是账目模块的独立路由入口。
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../core/utils/date_utils.dart';
 import '../../data/models/finance_entry.dart';
 import 'finance_controller.dart';
 
+/// 独立账目页：展示全部账目与本月收支汇总，长按删除、FAB 记一笔。
+///
+/// 生命周期：由路由 `/finance` 创建；直接复用全局 FinanceController 单例。
 class FinancePage extends StatefulWidget {
   const FinancePage({super.key});
 
@@ -57,6 +66,7 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
+  // 顶部汇总：本月收入/支出两个 Rx 数字，数据变化自动重建
   Widget _buildSummaryHeader() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -137,6 +147,8 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
+  /// 把分类图标名映射为 IconData；未知/自定义图标回退到问号。
+  /// HomePage 已改为通用 IconUtils.category，这里仅服务本页的旧图标名。
   IconData _getIconData(String name) {
     switch (name) {
       case 'work':
@@ -160,6 +172,8 @@ class _FinancePageState extends State<FinancePage> {
     }
   }
 
+  /// “记一笔”底部表单：金额/备注/收支类型/分类 chip。
+  /// 简化实现——保存时固定使用该类型的第一个分类（chip 的选中值不参与保存）。
   void _showAddSheet() {
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -299,6 +313,7 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
+  /// 长按条目的删除确认；确认后走 FinanceController.deleteEntry（写墓碑）。
   void _showDeleteConfirm(FinanceEntry entry) {
     Get.dialog(
       AlertDialog(

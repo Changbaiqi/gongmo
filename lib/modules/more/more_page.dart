@@ -1,11 +1,21 @@
+// ============================================================
+// more_page.dart（更多模块 · 入口页）
+// 职责：“更多”页，用两列网格聚合扩展工具入口（发票助手 / 汇率计算器 /
+//       薪资计算器），点击后按命名路由跳转。
+// 关联：各工具页相互独立、不依赖控制器；路由常量集中在 AppRoutes。
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../app/routes/app_routes.dart';
 
-/// “更多”功能页：网格入口，聚合扩展工具
+/// “更多”功能页：网格入口，聚合扩展工具。
+///
+/// 无状态页面；功能项以记录元组 `(icon, label, subtitle, route)` 声明，
+/// 新增工具只需在 `_items` 里加一行并注册对应路由。
 class MorePage extends StatelessWidget {
   const MorePage({super.key});
 
+  // 网格数据源：图标、标题、副标题、命名路由
   static const _items = <(
     IconData icon,
     String label,

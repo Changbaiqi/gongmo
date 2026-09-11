@@ -1,3 +1,10 @@
+// ============================================================
+// exchange_rate_page.dart（更多模块 · 汇率计算器）
+// 职责：以任选货币为基准、输入金额后实时换算十种常用货币；汇率为联网获取，
+//       成功后写入 config.json 缓存，离线时回退到上次缓存。
+// 关联：网络请求 open.er-api.com（免费接口，15 秒超时），缓存读写走
+//       StorageService 的 getConfig/setConfig；金额展示用 CountUpText。
+// ============================================================
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -8,7 +15,10 @@ import 'package:http/http.dart' as http;
 import '../../data/services/storage_service.dart';
 import '../../core/widgets/count_up_text.dart';
 
-/// 汇率计算器：以人民币为基准，换算常用货币
+/// 汇率计算器：以人民币为基准，换算常用货币。
+///
+/// 汇率表统一以 CNY 为基准存储（正值为“1 CNY 可兑换的数量”），切换基准货币
+/// 只是 UI 上的换算方向变化，不需要重新请求接口。
 class ExchangeRatePage extends StatefulWidget {
   const ExchangeRatePage({super.key});
 
@@ -18,7 +28,9 @@ class ExchangeRatePage extends StatefulWidget {
 
 class _ExchangeRatePageState extends State<ExchangeRatePage>
     with SingleTickerProviderStateMixin {
+  // 免费汇率接口：一次返回以 CNY 为基准的全部货币汇率
   static const _apiBase = 'https://open.er-api.com/v6/latest/CNY';
+  // 持久化缓存键：汇率表与更新时间分开存，便于单独读取
   static const _cacheKey = 'fx_cache';
   static const _cacheTimeKey = 'fx_time';
 
@@ -77,6 +89,7 @@ class _ExchangeRatePageState extends State<ExchangeRatePage>
     super.dispose();
   }
 
+  /// 从 config.json 恢复上次缓存的汇率与更新时间；有缓存则直接可算，不再显示加载圈
   void _loadFromCache() {
     final raw = StorageService().getConfig(_cacheKey);
     if (raw is Map) {
@@ -94,15 +107,18 @@ class _ExchangeRatePageState extends State<ExchangeRatePage>
     }
   }
 
+  /// 联网拉取最新汇率：成功后更新界面并写缓存；
+  /// 失败时不弹错，只在“无缓存可兜底”时展示错误提示，有缓存则继续用旧汇率。
   Future<void> _fetchRates() async {
-    if (_fetching) return;
+    if (_fetching) return; // 防止连点重复请求
     setState(() {
       _fetching = true;
-      _loading = _rates.isEmpty;
+      _loading = _rates.isEmpty; // 已有缓存时后台静默刷新，不遮界面
       _error = null;
     });
     _spin.repeat();
     try {
+      // 15 秒超时：接口偶发无响应时避免一直转圈
       final res = await http
           .get(Uri.parse(_apiBase))
           .timeout(const Duration(seconds: 15));
@@ -138,6 +154,7 @@ class _ExchangeRatePageState extends State<ExchangeRatePage>
     } catch (e) {
       setState(() {
         _loading = false;
+        // 有缓存就不报错：用户仍可基于旧汇率计算，静默等待下次刷新
         _error = _rates.isEmpty ? '汇率获取失败，请检查网络后刷新' : null;
       });
     } finally {
@@ -332,6 +349,9 @@ class _ExchangeRatePageState extends State<ExchangeRatePage>
     );
   }
 
+  /// 交叉汇率：存储的汇率都以 CNY 为基准，
+  /// “1 基准货币 = ? 目标货币” = 目标汇率 / 基准汇率。
+  /// 任一侧缺失或基准为 0 时返回 null，由界面隐藏该行金额。
   double? _rateOf(String code) {
     final r = _rates[code];
     final rb = _rates[_base];

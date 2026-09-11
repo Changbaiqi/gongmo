@@ -1,3 +1,8 @@
+// ============================================================
+// sakura_petals.dart（core/widgets · 通用视觉组件）
+// 职责：整屏樱花花瓣飘落的背景动画（纯 CustomPainter 绘制，无第三方依赖）。
+// 关联：由开屏页在“粉白樱花”主题下启用；不依赖控制器，也不接收触摸事件。
+// ============================================================
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -7,12 +12,15 @@ import 'package:flutter/material.dart';
 class SakuraPetals extends StatefulWidget {
   const SakuraPetals({super.key, this.petalCount = 14});
 
+  /// 同时飘落的花瓣数量
   final int petalCount;
 
   @override
   State<SakuraPetals> createState() => _SakuraPetalsState();
 }
 
+/// 单片花瓣的所有随机参数：位置、速度、摇摆、自转、颜色等。
+/// 数值在构造时一次性随机生成，之后只随动画进度求值，不再变化。
 class _Petal {
   _Petal(math.Random r)
       : x = r.nextDouble(),
@@ -57,6 +65,8 @@ class _Petal {
   final double alpha;
 }
 
+/// 动画状态：一个 7 秒循环的控制器驱动全部花瓣，
+/// 花瓣参数只在初始化时随机一次，保证每片轨迹稳定不闪烁。
 class _SakuraPetalsState extends State<SakuraPetals>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
@@ -92,6 +102,7 @@ class _SakuraPetalsState extends State<SakuraPetals>
   }
 }
 
+/// 花瓣绘制器：把每片花瓣的进度映射为屏幕坐标、摇摆与旋转后逐个绘制。
 class _PetalPainter extends CustomPainter {
   _PetalPainter({
     required this.progress,
@@ -119,7 +130,9 @@ class _PetalPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final pt in petals) {
+      // 每片花瓣按各自速度推进并取小数部分循环，offset 错开起始时刻
       final t = (progress * pt.speed + pt.offset) % 1.0;
+      // 纵向留出 30px 缓冲：从屏幕上方进入、下方离开，避免边缘突然出现/消失
       final y = t * (size.height + 60) - 30;
       final x = pt.x * size.width +
           math.sin(t * pt.swayFreq * 2 * math.pi + pt.phase) * pt.swayAmp;
@@ -135,6 +148,7 @@ class _PetalPainter extends CustomPainter {
     }
   }
 
+  /// 只有动画进度变化才需要重绘；花瓣列表本身不会变
   @override
   bool shouldRepaint(_PetalPainter oldDelegate) =>
       oldDelegate.progress != progress;

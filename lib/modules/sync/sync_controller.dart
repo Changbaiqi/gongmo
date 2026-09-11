@@ -1,3 +1,11 @@
+// ============================================================
+// sync_controller.dart（同步模块 · 业务控制器）
+// 职责：云端同步总调度——监听数据落盘做 6 秒防抖自动备份、手动备份/恢复、
+//       导出本地 JSON，并在数据变化或恢复后刷新各业务控制器。
+// 关联：依赖 StorageService（数据与变更通知）、GithubSyncService（远端读写）、
+//       SyncMerge（拉取后的合并纯函数），并反向驱动 Work/Finance/Dashboard
+//       三个控制器刷新；被 SyncPage 使用，随 App 常驻。
+// ============================================================
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -19,6 +27,11 @@ import '../finance/finance_controller.dart';
 import '../settings/settings_controller.dart';
 import '../work/work_controller.dart';
 
+/// 同步控制器：应用内所有 GitHub 备份/恢复流程的唯一入口。
+///
+/// 生命周期：在 SyncPage 首次 `Get.put` 时创建，之后常驻（含后台自动同步），
+/// 通过 [WidgetsBindingObserver] 感知前后台切换。自动同步通过
+/// `StorageService.onDataChanged` 回调触发，写入防抖定时器做延迟合并。
 class SyncController extends GetxController with WidgetsBindingObserver {
   final StorageService _storage = StorageService();
   final GithubSyncService _sync = GithubSyncService.instance;
@@ -33,6 +46,9 @@ class SyncController extends GetxController with WidgetsBindingObserver {
   /// 自动同步开关（持久化到 config.json）
   final autoSync = false.obs;
   Timer? _autoSyncTimer;
+
+  /// 最近一次成功同步时的数据指纹（[StorageService.syncSignature] 的 hashCode），
+  /// 用于跳过“数据没变”的重复上传，值为 0 表示尚未同步过。
   int _lastSyncedHash = 0;
 
   /// 仓库是否已绑定（含 Token）
@@ -59,6 +75,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
 
   @override
   void onClose() {
+    // 控制器常驻，一般不会触发；仍成对移除监听避免泄漏
     WidgetsBinding.instance.removeObserver(this);
     _autoSyncTimer?.cancel();
     super.onClose();
@@ -75,6 +92,8 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  /// 切换自动同步开关。
+  /// 开启时把指纹清零，保证接下来的第一次数据变动必定触发一次备份。
   void setAutoSync(bool v) {
     autoSync.value = v;
     _storage.setConfig('auto_sync', v);
@@ -84,10 +103,14 @@ class SyncController extends GetxController with WidgetsBindingObserver {
   void _onDataChanged() {
     _notifyUi(); // 后台自动入账等数据变化时刷新前台界面
     if (!autoSync.value) return;
+    // 6 秒防抖：连续写入（如批量导入、合并）只触发最后一次同步；
+    // 每次新变更都重置计时，避免同步过程中数据还在变导致上传的是旧快照
     _autoSyncTimer?.cancel();
     _autoSyncTimer = Timer(const Duration(seconds: 6), _runAutoSync);
   }
 
+  /// 数据变化后主动刷新当前在内存中的业务列表（控制器不存在时忽略）。
+  /// 覆盖前台记账、后台自动入账、云端恢复三种数据来源。
   void _notifyUi() {
     try {
       Get.find<FinanceController>().loadEntries();
@@ -102,11 +125,15 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// 防抖到期后执行一次自动备份。
+  ///
+  /// 三重短路：开关已关 / 正在同步或恢复 / 未绑定仓库 / 数据指纹与上次一致，
+  /// 任一满足都直接返回。失败时静默，等待下一次数据变化自然重试。
   Future<void> _runAutoSync() async {
     if (!autoSync.value || isSyncing.value || isRestoring.value) return;
     if (!isConnected) return;
     final hash = _storage.syncSignature.hashCode;
-    if (hash == _lastSyncedHash) return; // 数据无变化
+    if (hash == _lastSyncedHash) return; // 数据无变化，跳过上传省流量
     isSyncing.value = true;
     try {
       await _sync.pushBackup();
@@ -156,7 +183,11 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  /// 从 GitHub 恢复（覆盖本地）
+  /// 从 GitHub 恢复（覆盖本地）。
+  ///
+  /// 流程：`pullBackup` 拉取全部分片并做并集合并 → `restoreAllData` 整体覆盖
+  /// 本地数据（含删除墓碑）→ 补恢复预算配置 → 刷新各控制器与统计。
+  /// 恢复后本地数据会触发 onDataChanged，可能再次自动备份，属预期行为。
   Future<void> restoreFromGithub() async {
     if (isRestoring.value) return;
     if (!isConnected) {
@@ -202,10 +233,14 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  /// 导出备份 JSON 到本地 Documents 目录
+  /// 导出备份 JSON 到本地 Documents 目录。
+  ///
+  /// 纯本地导出，不依赖 GitHub 连接；文件名带秒级时间戳避免覆盖。
+  /// 结构为 `{app, version, exportedAt, data}`，data 即 StorageService 的全量快照。
   Future<void> exportJson() async {
     try {
       final docs = await getApplicationDocumentsDirectory();
+      // ISO 时间如 2026-09-11T12:34:56，替换冒号以兼容文件名
       final ts = DateTime.now()
           .toIso8601String()
           .substring(0, 19)
@@ -225,6 +260,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  /// 把云端返回的 dynamic 列表安全解析为模型列表；字段缺失或类型不符时跳过。
   List<T> _parseList<T>(
       dynamic raw, T Function(Map<String, dynamic>) fromJson) {
     if (raw is! List) return [];
@@ -234,6 +270,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
         .toList();
   }
 
+  /// 恢复完成后让各业务控制器重新从 StorageService 读数据（tag 不匹配则忽略）
   void _refreshAllControllers() {
     try {
       Get.find<WorkController>().loadEntries();
@@ -246,6 +283,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// 未绑定仓库时的统一提示，附带“去设置”快捷按钮
   void _promptConfig() {
     Get.snackbar(
       '尚未绑定 GitHub',

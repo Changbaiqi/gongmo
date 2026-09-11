@@ -1,3 +1,8 @@
+// ============================================================
+// widgets/fullscreen_timer_page.dart（横屏全屏计时牌）
+// 职责：沉浸式横屏显示计时，控制层 3 秒自动隐藏，支持暂停/继续/结束与常亮
+// 关联：Get.find<WorkController>() 复用进行中的计时；由 WorkPage 点击计时牌进入
+// ============================================================
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +15,7 @@ import '../work_controller.dart';
 /// - 点击页面显示/隐藏控制层（类似视频播放器）
 /// - 控制层：左上角退出按钮；底部暂停/结束/屏幕常亮开关
 /// - 结束需二次确认，确认后结束计时并退出全屏
+/// - 常亮依赖 WakelockPlus，插件不可用时静默降级，不影响计时
 class FullscreenTimerPage extends StatefulWidget {
   const FullscreenTimerPage({super.key});
 
@@ -19,14 +25,16 @@ class FullscreenTimerPage extends StatefulWidget {
 
 class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
   final WorkController _ctrl = Get.find<WorkController>();
-  bool _controlsVisible = true;
-  bool _keepAwake = true;
-  Timer? _hideTimer;
+  bool _controlsVisible = true; // 控制层是否可见
+  bool _keepAwake = true; // 屏幕常亮开关（默认开）
+  Timer? _hideTimer; // 控制层自动隐藏定时器
 
   @override
   void initState() {
     super.initState();
+    // immersiveSticky：隐藏状态栏/导航栏，用户上滑临时唤出后会自动再隐藏
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    // 强制横屏，退出时在 dispose 里恢复竖屏
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -35,6 +43,7 @@ class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
     _scheduleHide();
   }
 
+  /// 3 秒后自动隐藏控制层；重复调用会重置计时
   void _scheduleHide() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 3), () {
@@ -53,6 +62,7 @@ class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
     } catch (_) {}
   }
 
+  /// 点击页面切换控制层；显示时重新计时自动隐藏，手动隐藏则取消定时器
   void _toggleControls() {
     HapticFeedback.selectionClick();
     setState(() => _controlsVisible = !_controlsVisible);
@@ -66,6 +76,7 @@ class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
   @override
   void dispose() {
     _hideTimer?.cancel();
+    // 无论开关状态如何，退出时都强制关闭常亮并恢复系统的显示/方向设置
     WakelockPlus.disable().catchError((_) {});
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([
@@ -218,11 +229,16 @@ class _FullscreenTimerPageState extends State<FullscreenTimerPage> {
     );
   }
 
+  /// 切换屏幕常亮（WakelockPlus 失败时静默忽略，见 `_applyKeepAwake`）
   void _toggleKeepAwake() {
     setState(() => _keepAwake = !_keepAwake);
     _applyKeepAwake(_keepAwake);
   }
 
+  /// 二次确认后结束计时
+  ///
+  /// 先关确认框、再退出全屏，最后才 stopTimer：这样自统计模式弹出的
+  /// 输入框会落在工作页上，而不是叠在全屏页上。
   void _confirmStop() {
     Get.dialog(
       AlertDialog(

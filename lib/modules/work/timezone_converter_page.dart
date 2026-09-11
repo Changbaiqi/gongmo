@@ -1,3 +1,9 @@
+// ============================================================
+// timezone_converter_page.dart（时区显示/转换）
+// 职责：同时展示多个时区的当前时间；可改基准时区、拖动 ±24h 或选择时间换算
+// 关联：timezone 数据库由 core/utils/tz_setup 初始化；时区列表存
+//       StorageService 配置 'tz_convert_zones'；复用 tz_widgets 的选择面板
+// ============================================================
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,6 +17,9 @@ import '../../data/services/storage_service.dart';
 import 'tz_widgets.dart';
 
 /// 时区显示/转换：查看各时区当前时间，也可手动调整基准时间换算对应时刻
+///
+/// 页面内部用 `_offset`（相对现在的偏移）表达“把基准时间挪到何时”：
+/// 为 0 时是实时模式，非 0 时是手动模式（标题会显示“手动”）。
 class TimezoneConverterPage extends StatefulWidget {
   const TimezoneConverterPage({super.key});
 
@@ -22,11 +31,11 @@ class TimezoneConverterPage extends StatefulWidget {
 class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
   static const _configKey = 'tz_convert_zones';
 
-  late List<String> _selected;
-  bool _ready = false;
+  late List<String> _selected; // 展示的时区列表
+  bool _ready = false; // timezone 数据库初始化完成前显示 loading
   Duration _offset = Duration.zero; // 相对“现在”的偏移
   String _baseZoneId = ''; // 基准时区（默认设备本地）
-  Timer? _ticker;
+  Timer? _ticker; // 每 20 秒刷新一次实时显示
 
   bool get _isLive => _offset == Duration.zero;
 
@@ -34,6 +43,7 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
   void initState() {
     super.initState();
     final raw = StorageService().getConfig(_configKey);
+    // 读取已存时区，并过滤掉当前选项表中已不存在的 id
     final saved = raw is List
         ? raw
             .map((e) => '$e')
@@ -43,13 +53,16 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
     _selected = saved.isEmpty
         ? ['Asia/Shanghai', 'Europe/London', 'America/New_York']
         : saved;
+    // 只在实时模式下才需要周期刷新，手动模式时间固定不动
     _ticker = Timer.periodic(const Duration(seconds: 20), (_) {
       if (_isLive && mounted) setState(() {});
     });
     _init();
   }
 
+  /// 初始化 timezone 数据库并确定默认基准（设备本地时区）
   Future<void> _init() async {
+    // 数据库加载前访问 tz.local 会抛异常，因此用 _ready 挡住界面
     await ensureTimezonesInitialized();
     if (mounted) {
       setState(() {
@@ -65,8 +78,10 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
     super.dispose();
   }
 
+  /// 持久化时区选择，落盘会触发云备份防抖
   void _save() => StorageService().setConfig(_configKey, _selected);
 
+  /// 打开时区多选面板；取消（null）或全空时不修改当前选择
   Future<void> _manageZones() async {
     final picked = await showZonePicker(context, _selected);
     if (picked == null || picked.isEmpty) return;
@@ -79,6 +94,7 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
   tz.Location get _baseLoc =>
       tz.getLocation(_baseZoneId.isEmpty ? tz.local.name : _baseZoneId);
 
+  /// 基准时区的“当前时刻” = 该时区现在 + 手动偏移
   tz.TZDateTime _baseTime() => tz.TZDateTime.now(_baseLoc).add(_offset);
 
   /// 点选下方时区，把它设为基准时区
@@ -88,6 +104,7 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
     setState(() => _baseZoneId = id);
   }
 
+  /// 选择日期+时间，换算成相对现在的偏移；之后所有时区都基于这个偏移换算
   Future<void> _pickDateTime() async {
     final base = _baseTime();
     final d = await showDatePicker(
@@ -103,12 +120,14 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
     );
     if (t == null) return;
     final loc = _baseLoc;
+    // 先构造基准时区的目标时刻，再与“现在”相减得到偏移
     final pickedTz =
         tz.TZDateTime(loc, d.year, d.month, d.day, t.hour, t.minute);
     setState(() =>
         _offset = pickedTz.difference(tz.TZDateTime.now(loc)));
   }
 
+  /// 偏移量文案：0 显示“现在”，否则如 “+2h30m”
   String _offsetLabel() {
     final m = _offset.inMinutes;
     if (m == 0) return '现在';
@@ -119,9 +138,11 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
     return mm == 0 ? '$sign${h}h' : '$sign${h}h${mm}m';
   }
 
+  /// 日期差文案：+1 明天 / -1 昨天 / 0 今天
   String _dayDiffText(int diff) =>
       diff > 0 ? '明天' : (diff < 0 ? '昨天' : '今天');
 
+  /// 与基准时区的 UTC 偏移差文案（按实际时差，含夏令时影响，而非地理经度）
   String _diffText(tz.TZDateTime z, tz.TZDateTime base) {
     final diff =
         z.timeZoneOffset.inMinutes - base.timeZoneOffset.inMinutes;
@@ -136,6 +157,7 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // timezone 数据未就绪前不能调用 tz API，先给 loading
     if (!_ready) {
       return Scaffold(
         appBar: AppBar(title: const Text('时区显示/转换'), centerTitle: true),
@@ -201,6 +223,7 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
     );
   }
 
+  /// 基准卡片：基准时区时间 + 偏移滑块 + 回到现在/选择时间
   Widget _buildBaseCard(ColorScheme cs, tz.TZDateTime base) {
     return Card(
       child: Padding(
@@ -297,6 +320,7 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
                     style: TextStyle(
                         fontSize: 10, color: cs.onSurfaceVariant)),
                 Expanded(
+                  // 192 = 48 小时 ÷ 15 分钟，即步进精度 0.25h
                   child: Slider(
                     min: -24,
                     max: 24,
@@ -372,14 +396,16 @@ class _TimezoneConverterPageState extends State<TimezoneConverterPage> {
     );
   }
 
+  /// 单个时区行：点击设为基准；当地 9:00–18:00 用主题色高亮
   Widget _buildZoneRow(ColorScheme cs, String id, tz.TZDateTime base) {
     final z = tz.TZDateTime.from(base, tz.getLocation(id));
+    // 用“日期 0 点”相减得到自然日差（+1 表示对方已是明天）
     final dayDiff = DateTime(z.year, z.month, z.day)
         .difference(DateTime(base.year, base.month, base.day))
         .inDays;
     final isBase = id == _baseZoneId;
     final isLocal = id == tz.local.name;
-    final work = z.hour >= 9 && z.hour < 18;
+    final work = z.hour >= 9 && z.hour < 18; // 工作时段
     final badge = isBase
         ? (isLocal ? '基准·本地' : '基准')
         : (isLocal ? '本地' : null);

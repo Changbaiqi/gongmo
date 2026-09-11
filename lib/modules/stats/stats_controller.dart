@@ -1,3 +1,10 @@
+// ============================================================
+// stats/stats_controller.dart（Stats 模块 · 统计计算）
+// 职责：按周/月/年区间聚合账目——收支汇总、趋势分桶、分类占比，
+//       并管理区间切换（前后翻页、禁止进入未来区间）。
+// 关联：只读 FinanceRepository 与 StorageService.categories；
+//       由 StatsView 注册使用，TrendChart / DonutChart 消费其计算结果。
+// ============================================================
 import 'dart:ui';
 import 'package:get/get.dart';
 import '../../core/utils/icon_utils.dart';
@@ -6,8 +13,10 @@ import '../../data/models/finance_entry.dart';
 import '../../data/repositories/finance_repository.dart';
 import '../../data/services/storage_service.dart';
 
+/// 统计区间粒度：周（周一起始）/ 月 / 年。
 enum StatsPeriod { week, month, year }
 
+/// 趋势图的一个数据点（横轴一格）：标签 + 该格收入/支出合计。
 class TrendBucket {
   final String label;
   final double income;
@@ -15,6 +24,7 @@ class TrendBucket {
   const TrendBucket(this.label, this.income, this.expense);
 }
 
+/// 分类占比图的一片：分类名、颜色与金额（列表按金额降序）。
 class CategorySlice {
   final String name;
   final Color color;
@@ -22,6 +32,10 @@ class CategorySlice {
   const CategorySlice(this.name, this.color, this.amount);
 }
 
+/// 统计控制器：以 [anchor] 为锚点、[period] 为粒度，计算一个时间区间的统计结果。
+///
+/// 生命周期：由 StatsView `Get.put` 创建；聚合结果都放在 Rx 里由 Obx 订阅。
+/// 计算全程只读账目与分类，不写盘。
 class StatsController extends GetxController {
   final FinanceRepository _financeRepo = FinanceRepository();
 
@@ -37,6 +51,7 @@ class StatsController extends GetxController {
 
   List<Category> get _categories => StorageService().categories;
 
+  /// 当前区间起始时刻（含）：周=周一 00:00，月=当月 1 日，年=1 月 1 日。
   DateTime get rangeStart {
     final a = anchor.value;
     switch (period.value) {
@@ -50,6 +65,7 @@ class StatsController extends GetxController {
     }
   }
 
+  /// 当前区间结束时刻（含），用于展示与判断能否继续向后翻页。
   DateTime get rangeEnd {
     final s = rangeStart;
     switch (period.value) {
@@ -62,12 +78,14 @@ class StatsController extends GetxController {
     }
   }
 
+  /// 是否允许向后翻：只有区间结束日早于今天才允许，避免翻到未来的空区间。
   bool get canGoNext {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     return rangeEnd.isBefore(today);
   }
 
+  /// 区间文案：周显示“x月x日 - x月x日”，月/年显示中文年月。
   String get rangeLabel {
     final s = rangeStart;
     final e = rangeEnd;
@@ -87,6 +105,7 @@ class StatsController extends GetxController {
     reload();
   }
 
+  /// 切换统计粒度：锚点重置回今天并重新聚合（切粒度后保留历史位置意义不大）。
   void setPeriod(StatsPeriod p) {
     if (period.value == p) return;
     period.value = p;
@@ -94,6 +113,7 @@ class StatsController extends GetxController {
     reload();
   }
 
+  /// 向前翻一个区间（周 -7 天 / 月 -1 / 年 -12）并重新聚合。
   void prevPeriod() {
     switch (period.value) {
       case StatsPeriod.week:
@@ -109,6 +129,7 @@ class StatsController extends GetxController {
     reload();
   }
 
+  /// 向后翻一个区间；已到当前时段时由 [canGoNext] 拦截。
   void nextPeriod() {
     if (!canGoNext) return;
     switch (period.value) {
@@ -128,11 +149,17 @@ class StatsController extends GetxController {
   void _shiftDays(int days) =>
       anchor.value = anchor.value.add(Duration(days: days));
 
+  // DateTime 构造器会自动处理月末进位（如 1 月 31 日 +1 月 => 3 月 3 日），
+  // 这里只用于翻页定位，这种归一化可以接受
   void _shiftMonths(int months) {
     final a = anchor.value;
     anchor.value = DateTime(a.year, a.month + months, a.day);
   }
 
+  /// 重新聚合当前区间：总额、条目数、趋势分桶与分类占比。
+  ///
+  /// 过滤采用“左闭右开”：endExclusive 取结束日的次日零点，
+  /// 保证结束日当天的记录全部计入。
   void reload() {
     final start = rangeStart;
     final endExclusive =
@@ -158,6 +185,10 @@ class StatsController extends GetxController {
     _buildCategorySlices(entries, FinanceType.income, incomeSlices);
   }
 
+  // 按粒度分桶并累加收入/支出：
+  //   周 -> 7 桶，索引=与起始日相差天数（clamp 防越界）
+  //   月 -> 当月天数桶，索引=date.day-1
+  //   年 -> 12 桶，索引=date.month-1
   void _buildTrend(List<FinanceEntry> entries, DateTime start) {
     final List<TrendBucket> buckets;
     switch (period.value) {
@@ -244,12 +275,14 @@ class StatsController extends GetxController {
         unknownIds.add(entry.key);
       }
     }
+    // 分类可能已被删除：匹配不到分类的条目合并成一条灰色“未分类”，避免金额丢失
     if (unknownIds.isNotEmpty) {
       final unknownSum =
           unknownIds.fold(0.0, (s, id) => s + (byId[id] ?? 0));
       slices.add(
           CategorySlice('未分类', const Color(0xFF9E9E9E), unknownSum));
     }
+    // 按金额降序，饼图与图例从大到小展示
     slices.sort((a, b) => b.amount.compareTo(a.amount));
     out.assignAll(slices);
   }

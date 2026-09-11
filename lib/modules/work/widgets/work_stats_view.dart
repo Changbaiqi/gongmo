@@ -1,3 +1,9 @@
+// ============================================================
+// widgets/work_stats_view.dart（工时统计子页）
+// 职责：周期切换 + 区间翻页 + 概要卡片 + 月历/趋势/标签占比的完整统计 UI
+// 关联：WorkStatsController（由本页 Get.put）；复用 DonutChart、
+//       DurationBarChart、MonthDurationCalendar；被 WorkPage「统计」模式嵌入
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -7,6 +13,8 @@ import '../work_stats_controller.dart';
 import 'duration_bar_chart.dart';
 
 /// 时钟页「统计」子页：计时数据统计（日/周/月/年 + 标签占比）
+///
+/// 自身只管理切换动画，数据全部来自 [WorkStatsController]。
 class WorkStatsView extends StatefulWidget {
   const WorkStatsView({super.key});
 
@@ -17,6 +25,7 @@ class WorkStatsView extends StatefulWidget {
 class _WorkStatsViewState extends State<WorkStatsView>
     with SingleTickerProviderStateMixin {
   late final WorkStatsController _ctrl;
+  // 周期/区间切换时的内容入场动画；每次切换 forward(from: 0) 重播
   late final AnimationController _switchAnim = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 300),
@@ -27,7 +36,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
   void initState() {
     super.initState();
     _ctrl = Get.put(WorkStatsController());
-    _ctrl.reload();
+    _ctrl.reload(); // 页面每次出现都拉一次最新计时数据
   }
 
   @override
@@ -39,6 +48,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // 整页用 Obx 包住，任何统计字段变化都会重建
     return Obx(() => ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           children: [
@@ -79,6 +89,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
         ));
   }
 
+  /// 日/周/月/年四段切换器
   Widget _buildPeriodToggle(ColorScheme cs) {
     return Container(
       padding: const EdgeInsets.all(4),
@@ -102,6 +113,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
     );
   }
 
+  /// 单个周期段：点击后重置锚点并重播内容动画
   Widget _segment(String label, WorkStatsPeriod p, ColorScheme cs) {
     final active = _ctrl.period.value == p;
     return GestureDetector(
@@ -132,6 +144,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
     );
   }
 
+  /// 区间翻页栏：左右箭头切换周期，右箭头到未来时禁用
   Widget _buildRangeBar(ColorScheme cs) {
     return Row(
       children: [
@@ -182,6 +195,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
     );
   }
 
+  /// 概要卡片：总时长 / 记录数 / 日均时长
   Widget _buildSummaryCard(ColorScheme cs) {
     return Card(
       child: Padding(
@@ -301,6 +315,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
     );
   }
 
+  /// 时长趋势卡片：按周期分桶的柱状图，无数据时显示占位文案
   Widget _buildTrendCard(ColorScheme cs) {
     return Card(
       child: Padding(
@@ -333,6 +348,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
     );
   }
 
+  /// 标签占比卡片：环形图展示各标签时长占比
   Widget _buildTagCard(ColorScheme cs) {
     return Card(
       child: Padding(
@@ -385,6 +401,7 @@ class _SectionEntranceState extends State<_SectionEntrance> {
   @override
   void initState() {
     super.initState();
+    // 每个区块延迟 55ms 依次入场，延迟封顶在 index 8
     final delay = Duration(milliseconds: 55 * widget.index.clamp(0, 8));
     Future.delayed(delay, () {
       if (mounted) setState(() => _shown = true);

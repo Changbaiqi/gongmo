@@ -1,11 +1,16 @@
+// ============================================================
+// widgets/month_duration_calendar.dart（月历时长网格）
+// 职责：无状态月历，日期格下方显示当天累计时长（分钟）
+// 关联：由 WorkStatsView 传入月份与 dayMinutes；仅展示、无交互
+// ============================================================
 import 'package:flutter/material.dart';
 
 /// 月历时长组件：每天日期下方显示对应时长（时钟统计月视图）
 class MonthDurationCalendar extends StatelessWidget {
-  final DateTime month; // 任意当月日期
+  final DateTime month; // 任意当月日期，只取年/月
   final Map<int, double> dayMinutes; // 日(1..31) -> 分钟
 
-  static const _weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+  static const _weekDays = ['一', '二', '三', '四', '五', '六', '日']; // 周一起
 
   const MonthDurationCalendar({
     super.key,
@@ -17,7 +22,9 @@ class MonthDurationCalendar extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
+    // “下月 0 号”即当月最后一天，避免手写闰年判断
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    // weekday 中周一=1，减 1 得到首日前面要补齐的空格数
     final startOffset = DateTime(month.year, month.month, 1).weekday - 1;
 
     final cells = <Widget>[
@@ -34,6 +41,7 @@ class MonthDurationCalendar extends StatelessWidget {
       cells.add(const SizedBox());
     }
     for (var day = 1; day <= daysInMonth; day++) {
+      // 今天用主题色圆底高亮
       final isToday = now.year == month.year &&
           now.month == month.month &&
           now.day == day;
@@ -71,6 +79,7 @@ class MonthDurationCalendar extends StatelessWidget {
         ),
       );
     }
+    // 末尾补空格，使网格完整成行
     while (cells.length % 7 != 0) {
       cells.add(const SizedBox());
     }
@@ -89,6 +98,7 @@ class MonthDurationCalendar extends StatelessWidget {
     );
   }
 
+  /// 分钟转紧凑文案：≥60 分钟显示一位小数的小时，否则显示分钟
   String _fmt(double minutes) {
     final total = minutes.round();
     if (total >= 60) return '${(total / 60).toStringAsFixed(1)}时';

@@ -1,5 +1,14 @@
+// ============================================================
+// dashboard/widgets/calendar_widget.dart（Dashboard 模块 · 纯 UI 组件）
+// 职责：自绘月历网格，标记有记录的日期，支持翻月与日期点选。
+// 关联：由 DashboardPage 传入 entryDates 使用；无业务逻辑，不依赖控制器/服务。
+// ============================================================
 import 'package:flutter/material.dart';
 
+/// 月历组件：按周一起始展示一个月，[markedDates] 中的日期显示圆点。
+///
+/// 自身维护当前展示月份（翻月用），[initialMonth] 只在首次创建时生效，
+/// 之后外部重新传入也不会跳月。
 class MonthCalendar extends StatefulWidget {
   final DateTime initialMonth;
   final Set<DateTime> markedDates;
@@ -42,6 +51,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
     });
   }
 
+  /// 把日期编码成 yyyyMMdd 整数比较：DateTime 的 == 包含时分秒，
+  /// 这里只关心“同一天”，整数比较更直接，也方便做去重。
   static int _dayKey(DateTime date) =>
       date.year * 10000 + date.month * 100 + date.day;
 
@@ -51,6 +62,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       widget.selectedDate != null &&
       _dayKey(date) == _dayKey(widget.selectedDate!);
 
+  // 逐日比对而非 Set.contains：外部传入的日期可能带时分秒
   bool _isMarked(DateTime date) => widget.markedDates.any(
       (d) => d.year == date.year && d.month == date.month && d.day == date.day);
 
@@ -102,13 +114,14 @@ class _MonthCalendarState extends State<MonthCalendar> {
     );
   }
 
+  /// 生成整月格子：先补首日前置空格，再填 1..最后一天，末尾补空保持整行。
   Widget _buildDaysGrid() {
     final cs = Theme.of(context).colorScheme;
     final firstDay = DateTime(_displayMonth.year, _displayMonth.month, 1);
     final lastDay = DateTime(_displayMonth.year, _displayMonth.month + 1, 0);
     final daysInMonth = lastDay.day;
 
-    // Monday = 1, Sunday = 7
+    // Monday = 1, Sunday = 7：减 1 得到“周一起始”的前置空格数
     int startOffset = firstDay.weekday - 1;
 
     final cells = <Widget>[];
@@ -178,6 +191,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
       ));
     }
 
+    // 补齐最后一行的空位，保证格子总数能被 7 整除
     while (cells.length % 7 != 0) {
       cells.add(const SizedBox());
     }

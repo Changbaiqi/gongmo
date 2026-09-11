@@ -1,8 +1,18 @@
+// ============================================================
+// sync_page.dart（同步模块 · 页面）
+// 职责：GitHub 同步页 UI——展示连接/备份状态与本地数据统计，提供自动同步
+//       开关、手动备份、云端恢复（二次确认）、本地导出四个操作入口。
+// 关联：SyncController（全部业务逻辑与状态）；页面通过 /sync 路由进入。
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'sync_controller.dart';
 import '../../core/widgets/count_up_text.dart';
 
+/// GitHub 同步页：无状态页面，状态全部来自 [SyncController]。
+///
+/// 用 `busy`（同步中或恢复中）统一禁用操作按钮，防止备份与恢复并发导致
+/// 数据互相覆盖。
 class SyncPage extends StatelessWidget {
   const SyncPage({super.key});
 
@@ -18,6 +28,7 @@ class SyncPage extends StatelessWidget {
       ),
       body: Obx(() {
         final connected = ctrl.isConnected;
+        // 任一流程进行中即锁定所有操作入口，避免并发写云端/本地
         final busy = ctrl.isSyncing.value || ctrl.isRestoring.value;
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -118,6 +129,7 @@ class SyncPage extends StatelessWidget {
     );
   }
 
+  /// 顶部状态卡：连接状态云朵图标、仓库地址、上次备份时间，未绑定时给出入口
   Widget _buildStatusCard(
       BuildContext context, SyncController ctrl, ColorScheme cs, bool connected) {
     return Card(
@@ -214,6 +226,7 @@ class SyncPage extends StatelessWidget {
         '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 
+  /// 恢复是覆盖式操作（云端 → 本地），必须二次确认；确认后才真正发起拉取
   void _confirmRestore(BuildContext context, SyncController ctrl) {
     Get.dialog(
       AlertDialog(

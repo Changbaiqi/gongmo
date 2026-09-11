@@ -1,5 +1,12 @@
+// ============================================================
+// 日期与时长格式化工具（core/utils）
+// 职责：统一 App 内的日期/时间/时长显示格式（中文 locale）
+// 关联：被各页面与控制器使用；中文星期依赖 main() 中 initializeDateFormatting('zh_CN')
+// ============================================================
+
 import 'package:intl/intl.dart';
 
+/// 日期/时长格式化辅助类（纯静态方法，无状态）
 class DateHelper {
   static final _dateFormat = DateFormat('yyyy-MM-dd');
   static final _dateTimeFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
@@ -15,6 +22,7 @@ class DateHelper {
   static String formatDisplay(DateTime date) => _fullDisplayFormat.format(date);
   static String formatWeekday(DateTime date) => _weekdayFormat.format(date);
 
+  /// 中文可读时长，如 "2小时35分钟"（不足 1 小时只显示分钟）
   static String formatDuration(Duration duration) {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
@@ -24,6 +32,7 @@ class DateHelper {
     return '$minutes分钟';
   }
 
+  /// 定长时钟格式 "HH:mm:ss"（用于计时器/秒表显示）
   static String formatDurationShort(Duration duration) {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);

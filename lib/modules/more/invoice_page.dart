@@ -1,10 +1,20 @@
+// ============================================================
+// invoice_page.dart（更多模块 · 发票助手）
+// 职责：常用开票抬头（发票信息）的增删改查：列表展示、弹窗编辑、一键复制
+//       全部信息到剪贴板、删除二次确认。
+// 关联：直接读写 StorageService 单例的 invoiceProfiles（invoice_profiles.json），
+//       删除会写入墓碑以支持云端同步；不经过独立的 Controller。
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../data/models/invoice_profile.dart';
 import '../../data/services/storage_service.dart';
 
-/// 发票助手：管理常用开票抬头，一键复制填开信息
+/// 发票助手：管理常用开票抬头，一键复制填开信息。
+///
+/// 页面不缓存数据，每次 build 都从 [StorageService] 单例取最新列表；
+/// 增删改后手动 `setState` 触发刷新（StorageService 本身不驱动 UI）。
 class InvoicePage extends StatefulWidget {
   const InvoicePage({super.key});
 
@@ -13,6 +23,7 @@ class InvoicePage extends StatefulWidget {
 }
 
 class _InvoicePageState extends State<InvoicePage> {
+  // 直接引用单例内部的列表，避免拷贝造成的状态不同步
   List<InvoiceProfile> get _profiles => StorageService().invoiceProfiles;
 
   @override
@@ -142,11 +153,14 @@ class _InvoicePageState extends State<InvoicePage> {
     return lines.join('\n');
   }
 
+  /// 把抬头格式化为多行文本写入系统剪贴板（只复制已填写的字段）
   Future<void> _copyProfile(InvoiceProfile p) async {
     await Clipboard.setData(ClipboardData(text: _profileText(p)));
     Get.snackbar('已复制', '开票信息已复制到剪贴板');
   }
 
+  /// 删除前二次确认；确认后调用 removeInvoiceProfile，
+  /// 内部会记录删除墓碑并触发保存（供云端合并时识别该记录已删除）
   void _confirmDelete(InvoiceProfile p) {
     Get.dialog(AlertDialog(
       title: const Text('删除抬头'),
@@ -164,6 +178,9 @@ class _InvoicePageState extends State<InvoicePage> {
     ));
   }
 
+  /// 新增/编辑抬头弹窗：existing 为空表示新增，否则编辑并保留原 id。
+  /// 保存后调用 StorageService 对应方法落盘（编辑会刷新 updatedAt 供同步比对），
+  /// 再用 setState 刷新列表。
   Future<void> _showProfileDialog({InvoiceProfile? existing}) async {
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
@@ -228,6 +245,7 @@ class _InvoicePageState extends State<InvoicePage> {
                 bankAccount: accountCtrl.text.trim(),
               );
               if (existing == null) {
+                // 本地生成 id：毫秒时间戳转 36 进制 + 名称长度，保证跨设备近乎不重复
                 profile.id = DateTime.now()
                         .millisecondsSinceEpoch
                         .toRadixString(36) +

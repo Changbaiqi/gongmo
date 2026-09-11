@@ -1,3 +1,9 @@
+// ============================================================
+// SyncMerge 多设备合并算法单元测试
+// 覆盖：并集合并、最新修改优先、时间相同保留本地、删除墓碑、
+//       删除后重编辑保留、墓碑取较晚时间、createdAt 回退
+// ============================================================
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gongmo/data/services/sync_merge.dart';
 

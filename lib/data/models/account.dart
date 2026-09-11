@@ -1,6 +1,16 @@
+// ============================================================
+// 支付账户模型（data/models）
+// 职责：账户（现金/支付宝等）的数据结构与 JSON 序列化
+// 关联：StorageService（accounts.json）、多设备合并（按 updatedAt 取新）
+// 说明：当前主要作为默认数据保留，记账表单尚未选择账户
+// ============================================================
+
+/// 支付账户
 class Account {
   final String id;
   String name;
+
+  /// 初始余额（预留）
   double initialBalance;
   DateTime createdAt;
   DateTime updatedAt;
@@ -39,6 +49,7 @@ class Account {
     };
   }
 
+  /// 首次启动时写入的默认账户
   static List<Account> defaultAccounts() {
     return [
       Account(id: 'acc_1', name: '现金'),

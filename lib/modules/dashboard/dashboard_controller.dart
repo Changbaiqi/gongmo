@@ -1,3 +1,11 @@
+// ============================================================
+// dashboard/dashboard_controller.dart（Dashboard 模块 · 概览数据聚合）
+// 职责：为首页结余卡/概览提供响应式数据——今日工时、本月收支、
+//       各分类本月支出、预算、进行中计时与日历标记。
+// 关联：依赖 WorkRepository / FinanceRepository / StorageService（读取为主）；
+//       以 tag:'dashboard' 注册，被 HomePage / DashboardPage 共用；
+//       仅预算类配置会落盘并触发自动云同步。
+// ============================================================
 import 'dart:async';
 import 'package:get/get.dart';
 import '../../data/repositories/work_repository.dart';
@@ -6,11 +14,19 @@ import '../../data/models/work_entry.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/services/storage_service.dart';
 
+/// 首页概览控制器：把工时、账目、预算、进行中计时汇总成可直接绑定的响应式状态。
+///
+/// 生命周期：由 HomePage（及旧版 DashboardPage）通过
+/// `Get.put(DashboardController(), tag: 'dashboard')` 创建并常驻，页面销毁时不主动释放；
+/// [onClose] 时会停止秒级刷新定时器。
+///
+/// 自身只读仓储数据；账目/工时变化由各自 Controller 写完后调用 [refreshData] 触发重算。
 class DashboardController extends GetxController {
   final WorkRepository _workRepo = WorkRepository();
   final FinanceRepository _financeRepo = FinanceRepository();
   final StorageService _storage = StorageService();
 
+  // ---- 概览状态（均为只读派生值，由 Obx 订阅） ----
   final todayWorkDuration = Duration.zero.obs;
   final todayWorkCount = 0.obs;
   final monthIncome = 0.0.obs;
@@ -31,6 +47,7 @@ class DashboardController extends GetxController {
 
   Timer? _timerTick;
 
+  /// GetX 生命周期回调：注册完成后立即恢复预算配置并首次聚合数据。
   @override
   void onInit() {
     super.onInit();
@@ -99,6 +116,10 @@ class DashboardController extends GetxController {
       ..setDataConfig('budgets', Map<String, dynamic>.from(budgets));
   }
 
+  /// 全量重算概览数据（公开入口，账目/工时变化后由各 Controller 调用）。
+  ///
+  /// 副作用：重算本月分类支出；有进行中记录时启动每秒定时器刷新
+  /// [todayWorkDuration]，没有则停止定时器。
   void refreshData() {
     todayWorkDuration.value = _workRepo.getTodayTotalDuration();
     todayWorkCount.value = _workRepo.getToday().length;
@@ -136,6 +157,7 @@ class DashboardController extends GetxController {
     _loadEntryDates();
   }
 
+  // 工时与账目混排：按发生时间倒序取最近 10 条，供“最近记录”列表展示
   void _loadRecentEntries() {
     final allWork = _workRepo.getAll();
     final allFinance = _financeRepo.getAll();
@@ -149,6 +171,7 @@ class DashboardController extends GetxController {
     recentEntries.value = combined.take(10).toList();
   }
 
+  // 收集所有记录日期并归一化到“当天零点”，供日历按天去重标记
   void _loadEntryDates() {
     final dates = <DateTime>{};
     for (final w in _workRepo.getAll()) {
@@ -161,6 +184,8 @@ class DashboardController extends GetxController {
     entryDates.addAll(dates);
   }
 
+  // 进行中记录没有结束时间，静态数据无法反映实时时长；
+  // 用秒级定时器把“今日已完成时长 + 当前进行中的实时时长”推给 UI
   void _startTicking() {
     _timerTick?.cancel();
     _timerTick = Timer.periodic(const Duration(seconds: 1), (_) {

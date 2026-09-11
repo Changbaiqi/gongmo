@@ -1,3 +1,10 @@
+// ============================================================
+// timezone_overlap_page.dart（时区重叠图）
+// 职责：以本地 0–23 时为列，展示各时区的当地时刻、日期差与 9:00–18:00
+//       工作时段，并计算所有选中时区的共同重叠小时
+// 关联：时区列表存 StorageService 配置 'tz_overlap_zones'；复用 tz_widgets；
+//       从 TimeMorePage 进入
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:timezone/timezone.dart' as tz;
 
@@ -8,6 +15,9 @@ import '../../data/services/storage_service.dart';
 import 'tz_widgets.dart';
 
 /// 时区重叠图：以本地时间为基准，查看各时区一天中的工作时段与共同重叠时段
+///
+/// 算法：对本地每个整点 h（0–23），换算到各时区取当地小时；
+/// 若所有选中时区在该列的当地小时都落在 `[9, 18)` 内，则 h 属于共同工作时段。
 class TimezoneOverlapPage extends StatefulWidget {
   const TimezoneOverlapPage({super.key});
 
@@ -17,17 +27,18 @@ class TimezoneOverlapPage extends StatefulWidget {
 
 class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
   static const _configKey = 'tz_overlap_zones';
-  static const _workStart = 9;
-  static const _workEnd = 18; // [9, 18)
+  static const _workStart = 9; // 工作时段起（含）
+  static const _workEnd = 18; // 工作时段止（不含），即 [9, 18)
 
-  late List<String> _selected;
-  bool _ready = false;
-  int? _selectedHour; // 点击列高亮的小时
+  late List<String> _selected; // 参与对比的时区
+  bool _ready = false; // timezone 数据库是否就绪
+  int? _selectedHour; // 点击列高亮的小时（null 表示未选）
 
   @override
   void initState() {
     super.initState();
     final raw = StorageService().getConfig(_configKey);
+    // 读取已存时区，并过滤掉当前选项表中已不存在的 id
     final saved = raw is List
         ? raw
             .map((e) => '$e')
@@ -47,6 +58,7 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
 
   void _save() => StorageService().setConfig(_configKey, _selected);
 
+  /// 打开时区多选面板；变化后保存并清空列高亮
   Future<void> _manageZones() async {
     final picked = await showZonePicker(context, _selected);
     if (picked == null || picked.isEmpty) return;
@@ -57,15 +69,18 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
     _save();
   }
 
+  /// 当地小时是否属于工作时段（左闭右开）
   bool _isWork(int h) => h >= _workStart && h < _workEnd;
 
   String _two(int v) => v.toString().padLeft(2, '0');
 
+  /// 把离散的小时列表合并成连续区间文案，如 [9,10,14] → “09:00-11:00、14:00-15:00”
   String _overlapLabel(List<int> hours) {
     if (hours.isEmpty) return '没有共同工作时段';
     final ranges = <String>[];
     var start = hours.first;
     var prev = hours.first;
+    // 遇到断点（不连续）就收束当前区间，另起一段
     for (final h in hours.skip(1)) {
       if (h == prev + 1) {
         prev = h;
@@ -79,6 +94,7 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
     return ranges.join('、');
   }
 
+  /// 区间文案按半开区间展示，23 点所在区间的终点显示为 24:00
   String _rangeText(int a, int b) =>
       '${_two(a)}:00-${b == 23 ? '24' : _two(b + 1)}:00';
 
@@ -92,15 +108,16 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
       );
     }
 
-    final base = tz.local;
+    final base = tz.local; // 以设备本地时区为基准列
     final now = tz.TZDateTime.now(base);
-    final hoursByZone = <String, List<int>>{};
-    final dayByZone = <String, List<int>>{};
+    final hoursByZone = <String, List<int>>{}; // 时区 → 本地 0..23 点对应当地小时
+    final dayByZone = <String, List<int>>{}; // 时区 → 对应日期差（⁺次日/⁻前日）
     for (final id in _selected) {
       final zone = tz.getLocation(id);
       final hs = <int>[];
       final ds = <int>[];
       for (var h = 0; h < 24; h++) {
+        // 今天本地 h 点，同一时刻换算到目标时区的当地小时与自然日
         final t = tz.TZDateTime(base, now.year, now.month, now.day, h);
         final zt = tz.TZDateTime.from(t, zone);
         hs.add(zt.hour);
@@ -111,6 +128,7 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
       hoursByZone[id] = hs;
       dayByZone[id] = ds;
     }
+    // 共同工作时段：该列所有时区的当地小时都在工作时段内
     final overlap = [
       for (var h = 0; h < 24; h++)
         if (_selected.every((id) => _isWork(hoursByZone[id]![h]))) h,
@@ -120,6 +138,7 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
     const cellH = 34.0;
     const leftW = 118.0;
 
+    // 顶部小时格：属于共同重叠时段用 tertiary 底色，点击可高亮整列
     Widget headerCell(int h) {
       final hot = overlap.contains(h);
       final sel = _selectedHour == h;
@@ -150,6 +169,7 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
       );
     }
 
+    // 时区数据格：绿色表示当地工作时段，⁺/⁻ 表示日期晚/早一天
     Widget zoneCell(String id, int h) {
       final hour = hoursByZone[id]![h];
       final day = dayByZone[id]![h];
@@ -185,6 +205,7 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
       );
     }
 
+    // 左侧城市列：当前当地时刻 + 日期差标记
     Widget leftCell(String id) {
       final zn = tz.TZDateTime.now(tz.getLocation(id));
       final day = DateTime(zn.year, zn.month, zn.day)
@@ -310,6 +331,7 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
     );
   }
 
+  /// 概览卡片：共同工作时段文案 + 图例
   Widget _buildSummaryCard(
       ColorScheme cs, tz.Location base, List<int> overlap) {
     return Card(
@@ -471,6 +493,7 @@ class _TimezoneOverlapPageState extends State<TimezoneOverlapPage> {
     );
   }
 
+  /// 图例：工作时段 / 非工作时段 / 共同重叠
   Widget _legend(ColorScheme cs) {
     Widget item(Color color, String label) => Row(
           mainAxisSize: MainAxisSize.min,

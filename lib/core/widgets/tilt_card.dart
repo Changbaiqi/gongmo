@@ -1,3 +1,9 @@
+// ============================================================
+// tilt_card.dart（core/widgets · 通用视觉组件）
+// 职责：让卡片随手机重力方向做轻微 3D 倾斜，并叠加动态高光与阴影。
+// 关联：数据来自 sensors_plus 加速度计；纯展示组件，不依赖控制器，
+//       通常包在统计卡、记账卡外层使用。
+// ============================================================
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -13,6 +19,9 @@ import 'package:sensors_plus/sensors_plus.dart';
 ///   让 3D 变化更明显；
 /// - 稳定后自动停止 ticker，退到后台停止监听以省电；
 /// - 若运行环境未注册传感器插件，会静默降级为静态光影，不报错。
+///
+/// 生命周期：随宿主 Widget 创建/销毁；`enabled` 由 false 变 true 时才开始
+/// 监听，适合放在可折叠或懒加载的卡片里按需启用。
 class TiltCard extends StatefulWidget {
   const TiltCard({
     super.key,
@@ -121,6 +130,7 @@ class _TiltCardState extends State<TiltCard>
     }
   }
 
+  /// 停止监听并把目标角度归零；启动 ticker 让卡片平滑回正（而非闪回）
   void _stopListen() {
     _sub?.cancel();
     _sub = null;
@@ -189,9 +199,9 @@ class _TiltCardState extends State<TiltCard>
           content = Transform(
             alignment: Alignment.center,
             transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.0012) // 透视
+              ..setEntry(3, 2, 0.0012) // 透视：数值越小透视越强，营造近大远小
               ..rotateY(dx * widget.maxAngle)
-              ..rotateX(-dy * widget.maxAngle),
+              ..rotateX(-dy * widget.maxAngle), // 屏幕 y 向下与旋转方向相反
             child: content,
           );
         }

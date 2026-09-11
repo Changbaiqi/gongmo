@@ -1,3 +1,8 @@
+// ============================================================
+// time_more_page.dart（时间工具聚合入口）
+// 职责：用网格卡片聚合秒表、时区重叠图、时区显示/转换三个工具入口
+// 关联：通过 AppRoutes 命名路由跳转；入口在 WorkPage 打卡页右侧「更多」
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../app/routes/app_routes.dart';
@@ -6,6 +11,7 @@ import '../../app/routes/app_routes.dart';
 class TimeMorePage extends StatelessWidget {
   const TimeMorePage({super.key});
 
+  /// 工具入口配置：(图标, 标题, 副标题, 命名路由)
   static const _items = <(
     IconData icon,
     String label,
@@ -54,6 +60,7 @@ class TimeMorePage extends StatelessWidget {
     );
   }
 
+  /// 单个工具卡片，整卡可点跳转
   Widget _featureCard(BuildContext context, ColorScheme cs, IconData icon,
       String label, String subtitle, String route) {
     return Card(

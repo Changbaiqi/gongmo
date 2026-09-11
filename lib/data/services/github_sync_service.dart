@@ -1,3 +1,11 @@
+// ============================================================
+// GitHub 云备份服务（data/services）
+// 职责：通过 GitHub Contents API 把本地数据按年份分片备份到
+//       仓库 gongmo_backup/ 目录；上传前先拉取远端并合并，避免覆盖
+// 关联：StorageService（导入导出/合并）、SyncController（触发备份/恢复）、
+//       flutter_secure_storage（Token 加密存储）
+// ============================================================
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -79,12 +87,14 @@ class GithubSyncService {
     }
   }
 
+  /// 清除仓库地址与 Token（不影响远端数据）
   Future<void> clearConfig() async {
     await saveRepoUrl('');
     await saveToken('');
     await _storage.setConfig('last_sync', '');
   }
 
+  /// 上次成功同步时间（config.json 的 last_sync）
   DateTime? getLastSync() {
     final v = _storage.getConfig('last_sync');
     return v is String && v.isNotEmpty ? DateTime.tryParse(v) : null;
@@ -115,7 +125,7 @@ class GithubSyncService {
   Uri _fileUri(String repo, String name) => Uri.parse(
       '${AppConstants.githubApiBase}/repos/$repo/contents/$_backupDir/$name');
 
-  /// 列出远端备份目录：文件名 -> sha
+  /// 列出远端备份目录：文件名 -> sha（目录不存在返回空 Map）
   Future<Map<String, String>> _remoteShas(String repo, String token) async {
     final res =
         await _send(() => http.get(_dirUri(repo), headers: _headers(token)));
@@ -132,6 +142,7 @@ class GithubSyncService {
     return shas;
   }
 
+  /// 写入/更新远端单个文件（带 sha 即更新，否则新建），返回新 sha
   Future<String?> _putFile(String repo, String token, String name,
       String content, Map<String, String> shas, String commitMsg) async {
     final res = await _send(() => http.put(
@@ -155,6 +166,7 @@ class GithubSyncService {
     return null;
   }
 
+  /// 读取远端单个文件内容（base64 解码为 UTF-8），不存在返回 null
   Future<String?> _getFile(String repo, String token, String name) async {
     final res = await _send(
         () => http.get(_fileUri(repo, name), headers: _headers(token)));
@@ -335,6 +347,7 @@ class GithubSyncService {
     return deleted;
   }
 
+  /// 统一发送请求：30 秒超时，网络错误转为可展示的中文业务异常
   Future<http.Response> _send(Future<http.Response> Function() request) async {
     try {
       return await request().timeout(const Duration(seconds: 30));
@@ -361,6 +374,7 @@ class GithubSyncService {
     }
   }
 
+  /// 把 GitHub HTTP 状态码翻译为用户可理解的中文异常
   GithubSyncException _errorFor(int statusCode, [String? body]) {
     String? detail;
     if (body != null && body.isNotEmpty) {

@@ -1,3 +1,9 @@
+// ============================================================
+// 图案锁组件（core/widgets）
+// 职责：3×3 九宫格图案绘制与手势采集（不负责校验，校验在 LockController）
+// 关联：解锁页、图案设置页
+// ============================================================
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
@@ -61,6 +67,7 @@ class _PatternLockState extends State<PatternLock>
     return null;
   }
 
+  /// 手指移动时更新选点；经过已选点只移动“光标线”，不重复记录
   void _update(Offset p) {
     if (!widget.enabled) return;
     final hit = _hit(p);
@@ -85,6 +92,7 @@ class _PatternLockState extends State<PatternLock>
     }
   }
 
+  /// 抬手/取消时清空轨迹并把结果交给调用方校验
   void _end() {
     if (!widget.enabled || _selected.isEmpty) return;
     final result = List<int>.of(_selected);
@@ -133,6 +141,7 @@ class _PatternLockState extends State<PatternLock>
   }
 }
 
+/// 图案绘制器：连线 + 已选点光圈 + 未选点圆点
 class _PatternPainter extends CustomPainter {
   _PatternPainter({
     required this.selected,

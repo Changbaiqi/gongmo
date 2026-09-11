@@ -1,6 +1,12 @@
+// ============================================================
+// 主题构建（app/theme）
+// 职责：定义 8 套配色预设，并基于 Material 3 生成亮/暗两套 ThemeData
+// 关联：ThemeController（保存当前预设/模式）、main.dart（构建 GetMaterialApp 主题）
+// ============================================================
+
 import 'package:flutter/material.dart';
 
-/// 主题配色方案
+/// 主题配色方案：label 为设置页展示名，swatches 为预览色板
 enum AppThemePreset {
   sakura('粉白', [Color(0xFFEC5F92), Color(0xFFF9C5DA)]),
   green('墨绿', [Color(0xFF2E7D32), Color(0xFF4CAF50)]),
@@ -16,6 +22,8 @@ enum AppThemePreset {
   const AppThemePreset(this.label, this.swatches);
 }
 
+/// 全局主题工厂：所有 ThemeData 均由此构建，
+/// 保证按钮/卡片/输入框/弹窗等组件在各配色下风格一致
 class AppTheme {
   static const Color seedColor = Color(0xFF2E7D32);
 
@@ -176,6 +184,8 @@ class AppTheme {
     );
   }
 
+  /// 生成配色：多数预设用单色种子；starry/morandi 用三色种子；
+  /// sakura 浅色额外覆写主色，避免 fromSeed 生成的粉色偏暗沉
   static ColorScheme _schemeFor(AppThemePreset preset, Brightness brightness) {
     switch (preset) {
       case AppThemePreset.sakura:
@@ -268,6 +278,7 @@ class AppTheme {
     );
   }
 
+  /// 卡片底色：亮色统一白色；暗色为每套预设单独调校的深色，避免纯黑发闷
   static Color _cardColorFor(AppThemePreset preset, bool isDark) {
     if (!isDark) return Colors.white;
     switch (preset) {
@@ -290,6 +301,8 @@ class AppTheme {
     }
   }
 
+  /// 页面底色：使用背景图时改为半透明让图片透出；
+  /// 否则按预设取值（sakura 与 Android 原生开屏色对齐，避免启动闪色差）
   static Color _scaffoldBgFor(
       AppThemePreset preset, bool isDark, bool background) {
     if (background) {

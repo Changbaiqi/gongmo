@@ -1,3 +1,11 @@
+// ============================================================
+// settings_page.dart（设置模块 · 页面）
+// 职责：设置页 UI，按“外观 / 自动记账 / 记账提醒 / GitHub 连接 / 安全 /
+//       关于”分组展示配置项，把交互委托给对应的 Controller/Service。
+// 关联：SettingsController（GitHub 与自动记账状态）、ThemeController（配色/
+//       背景图）、LockController（应用锁）、ReminderService（每日提醒）、
+//       KeepAliveService（后台保活）；由 AppRoutes 的 /settings 路由进入。
+// ============================================================
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_notification_listener/flutter_notification_listener.dart';
@@ -15,6 +23,10 @@ import '../lock/lock_controller.dart';
 import '../lock/pattern_setup_page.dart';
 import 'settings_controller.dart';
 
+/// 设置页：整页为 ListView，每个分组标题与卡片用 [_Entrance] 包装做交错入场动画。
+///
+/// 无状态页面，全部可变状态存放在各 Controller/Service 中，通过 `Obx` 订阅；
+/// 每项配置修改后立即持久化，无需“保存”按钮。
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
@@ -141,7 +153,11 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  /// 安全：应用锁（图案密码 + 生物识别）
+  /// 安全分组卡片：应用锁总开关 + 生物识别开关 + 修改图案入口。
+  ///
+  /// 状态来自 [LockController]（secure storage 持久化）。开启应用锁时：
+  /// 未设图案先跳转图案设置页，设置成功后若设备支持生物识别则默认一并开启，
+  /// 减少用户二次操作。
   Widget _buildSecurityCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final lock = Get.find<LockController>();
@@ -214,7 +230,10 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  /// 清空云端备份：需输入指定文字二次确认
+  /// 清空云端备份：弹出“输入关键字”二次确认框，输入“自愿清空仓库”后才允许执行。
+  ///
+  /// 对话框内用 `canConfirm` 响应式控制“确认清空”按钮可用性，确认后调用
+  /// [SettingsController.clearCloudBackups] 删除仓库中的全部备份文件。
   void _confirmClearCloudBackups(SettingsController ctrl) {
     final confirmCtrl = TextEditingController();
     final canConfirm = false.obs;
@@ -284,6 +303,8 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  /// 外观分组卡片：深色模式三选一、8 套主题配色横向选择、自定义背景图。
+  /// 所有修改立即写入 config.json 并全局生效（ThemeController 驱动）。
   Widget _buildAppearanceCard(BuildContext context, ThemeController tc) {
     final cs = Theme.of(context).colorScheme;
     return Card(
@@ -426,6 +447,7 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  /// 单个主题配色方块：展示预设色板 + 名称，选中时放大并高亮描边
   Widget _presetTile(
       BuildContext context, ThemeController tc, AppThemePreset preset) {
     final cs = Theme.of(context).colorScheme;
@@ -490,6 +512,10 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  /// 从相册选择背景图并复制到应用私有目录（gongmo_data/background.jpg）。
+  ///
+  /// 不能直接引用相册返回的临时路径：该路径可能被系统清理或失效，
+  /// 所以先压缩（最大宽 1920、质量 85）另存一份固定文件，再交给 ThemeController。
   Future<void> _pickBackgroundImage(ThemeController tc) async {
     try {
       final picked = await ImagePicker().pickImage(
@@ -515,6 +541,8 @@ class SettingsPage extends StatelessWidget {
     }
   }
 
+  /// GitHub 配置对话框：填写仓库地址与 Token，保存后立即调用
+  /// `testConnection` 做一次真实校验；Token 仅在本地与请求头中使用，不上传别处。
   void _showGithubConfig(SettingsController ctrl) {
     final urlCtrl = TextEditingController(text: ctrl.githubRepoUrl.value);
     final tokenCtrl = TextEditingController(text: ctrl.githubToken.value);
@@ -607,7 +635,10 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-/// 自动记账卡片：开关 + 通知使用权限入口（从系统设置返回后自动刷新状态）
+/// 自动记账卡片：总开关 + 分应用开关（随总开关展开）+ 退款开关 + 权限入口。
+///
+/// 需要用 StatefulWidget 是因为要监听 App 生命周期：用户去系统设置授予
+/// “通知使用权”后返回，需要刷新权限状态并补启动监听服务。
 class _AutoAccountingCard extends StatefulWidget {
   final SettingsController ctrl;
 
@@ -634,7 +665,8 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 从系统设置授权返回后刷新状态
+    // 从系统设置授权返回后刷新状态；若权限已到手则自动补启动监听服务，
+    // 用户无需回到页面再手动拨一次开关
     if (state == AppLifecycleState.resumed) {
       widget.ctrl.refreshAutoAccountingStatus();
       if (widget.ctrl.autoAccounting.value &&
@@ -810,6 +842,9 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
 }
 
 /// 页面元素首次出现时上滑淡入（按 index 交错延迟）
+///
+/// 通过 `Future.delayed` 让第 N 个元素晚 45ms×N 出现，形成瀑布式入场；
+/// index 会被 clamp 到 8，避免长列表末尾元素等待过久。
 class _Entrance extends StatefulWidget {
   const _Entrance({required this.index, required this.child});
 
@@ -904,7 +939,7 @@ class _PulseIconState extends State<_PulseIcon>
   }
 }
 
-/// 每日记账提醒：开关 + 提醒时间
+/// 每日记账提醒卡片：开关（需通知权限）+ 提醒时间选择，状态存在 [ReminderService]。
 class _ReminderCard extends StatefulWidget {
   const _ReminderCard();
 
@@ -931,10 +966,11 @@ class _ReminderCardState extends State<_ReminderCard> {
       '${_hour.toString().padLeft(2, '0')}:${_minute.toString().padLeft(2, '0')}';
 
   Future<void> _toggle(bool v) async {
-    if (_busy) return;
+    if (_busy) return; // 防止连点导致重复请求权限/重复排期
     setState(() => _busy = true);
     try {
       if (v) {
+        // 开启前必须拿到系统通知权限，否则定时任务无法展示提醒
         final ok = await _reminder.requestPermission();
         if (!ok) {
           Get.snackbar('无法开启', '请在系统设置中允许「工墨」发送通知');
@@ -1013,11 +1049,15 @@ class _ReminderCardState extends State<_ReminderCard> {
   }
 }
 
-/// 后台常驻设置指引（非强制）
+/// 后台常驻设置指引（非强制）：弹出系统授权与厂商自启动设置的操作步骤
 void showKeepAliveGuide() {
   Get.dialog(const _KeepAliveDialog());
 }
 
+/// 后台保活指引对话框：展示电池优化授权状态并提供一键跳转。
+///
+/// 会监听生命周期，从系统设置返回后自动刷新授权状态；
+/// 部分 ROM 不弹“忽略电池优化”系统框，则兜底打开电池设置列表让用户手动设置。
 class _KeepAliveDialog extends StatefulWidget {
   const _KeepAliveDialog();
 
@@ -1074,7 +1114,7 @@ class _KeepAliveDialogState extends State<_KeepAliveDialog>
     } else {
       Get.snackbar('未能自动设置',
           '部分手机不会弹出系统对话框，已为你打开电池设置，请手动允许「不限制 / 忽略优化」');
-      // 兜底：直接跳到电池优化设置列表
+      // 兜底：系统对话框被 ROM 拦截时，直接跳到电池优化设置列表
       await KeepAliveService.instance.openBatterySettings();
     }
   }

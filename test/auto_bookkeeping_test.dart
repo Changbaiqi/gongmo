@@ -1,3 +1,9 @@
+// ============================================================
+// 自动记账通知解析单元测试
+// 覆盖：支付宝（支出/免密/收入/收款/转账/立减/千分位/退款）、
+//       微信（已支付/向商户付款/收款/退款/无关文本）、招行、无关文本返回 null
+// ============================================================
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gongmo/data/models/finance_entry.dart';
 import 'package:gongmo/data/services/auto_bookkeeping_service.dart';

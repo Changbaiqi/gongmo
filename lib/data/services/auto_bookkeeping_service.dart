@@ -1,3 +1,10 @@
+// ============================================================
+// 通知自动记账服务（data/services）
+// 职责：监听支付宝/微信/招商银行通知，解析收支金额并生成账目
+// 关联：flutter_notification_listener 后台引擎（写队列 auto_queue.json）、
+//       FinanceRepository（主引擎消费队列入账）、SettingsController（开关）
+// ============================================================
+
 import 'dart:async';
 import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import 'package:uuid/uuid.dart';
@@ -57,9 +64,11 @@ class AutoBookkeepingService {
   /// 是否自动记录退款（默认开启）
   bool get refundEnabled => _storage.getConfig('auto_refund') != false;
 
+  /// 是否已授予「通知使用权限」（监听通知的前提）
   Future<bool> hasPermission() async =>
       await NotificationsListener.hasPermission ?? false;
 
+  /// 监听服务是否正在运行
   Future<bool> isRunning() async =>
       _listening && (await NotificationsListener.isRunning ?? false);
 
@@ -89,6 +98,7 @@ class AutoBookkeepingService {
     _listening = true;
   }
 
+  /// 停止监听（关闭开关时调用）
   Future<void> stop() async {
     _listening = false;
     try {

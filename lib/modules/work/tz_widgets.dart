@@ -1,3 +1,8 @@
+// ============================================================
+// tz_widgets.dart（时区工具公共数据与组件）
+// 职责：21 个常用时区常量、城市/地区查询、时区多选底部面板
+// 关联：供 timezone_converter_page 与 timezone_overlap_page 共用
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -5,11 +10,12 @@ import 'package:get/get.dart';
 class TzOption {
   const TzOption(this.id, this.city, this.region);
 
-  final String id;
-  final String city;
-  final String region;
+  final String id; // IANA 时区 id，如 Asia/Shanghai
+  final String city; // 展示城市名
+  final String region; // 国家/地区
 }
 
+/// 全部可选时区（共 21 个常用城市，覆盖亚太/欧洲/美洲/大洋洲）
 const tzOptions = <TzOption>[
   TzOption('Asia/Shanghai', '北京', '中国'),
   TzOption('Asia/Hong_Kong', '香港', '中国香港'),
@@ -34,6 +40,7 @@ const tzOptions = <TzOption>[
   TzOption('Pacific/Auckland', '奥克兰', '新西兰'),
 ];
 
+/// 时区 id 转城市名，找不到时回退显示 id 本身
 String tzCity(String id) {
   for (final z in tzOptions) {
     if (z.id == id) return z.city;
@@ -41,6 +48,7 @@ String tzCity(String id) {
   return id;
 }
 
+/// 时区 id 转国家/地区，找不到返回空串
 String tzRegion(String id) {
   for (final z in tzOptions) {
     if (z.id == id) return z.region;
@@ -48,7 +56,9 @@ String tzRegion(String id) {
   return '';
 }
 
-/// 弹出时区多选面板；返回新的选择，取消返回 null
+/// 弹出时区多选底部面板；确定返回新的选择，取消返回 null
+///
+/// 约束：至少保留 1 个、最多 8 个，越界时用 snackbar 提示且不改变选择。
 Future<List<String>?> showZonePicker(
     BuildContext context, List<String> selected) {
   var current = List<String>.from(selected);

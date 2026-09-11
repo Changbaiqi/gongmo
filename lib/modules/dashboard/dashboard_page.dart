@@ -1,3 +1,9 @@
+// ============================================================
+// dashboard/dashboard_page.dart（Dashboard 模块 · 独立概览页）
+// 职责：日历 + 本月收支汇总 + 进行中计时 + 最近记录，并提供简版记账/计时表单。
+// 关联：DashboardController(tag:'dashboard')、FinanceController、WorkController、
+//       MonthCalendar；当前路由表（/）指向 HomePage，本页为保留的独立概览页。
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../core/utils/date_utils.dart';
@@ -8,6 +14,8 @@ import '../dashboard/widgets/calendar_widget.dart';
 import '../work/work_controller.dart';
 import '../finance/finance_controller.dart';
 
+/// 独立概览页（当前不是主界面）：若被打开，由 [initState] 注册带 tag 的
+/// DashboardController；底部表单是 HomePage 快速记账的简化版。
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -147,12 +155,14 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  /// 结束进行中的计时并立即重算概览（写盘由 WorkController 负责）。
   void _stopTimer() {
     final wc = Get.find<WorkController>();
     wc.stopTimer();
     _ctrl.refreshData();
   }
 
+  // 最近记录是“工时 + 账目”的混合列表，按运行时类型分发给不同条目渲染
   Widget _buildRecentEntries() {
     final entries = _ctrl.recentEntries;
     if (entries.isEmpty) {
@@ -239,6 +249,8 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  /// 简版底部表单：Tab1 记一笔（直接调 FinanceController.addEntry），
+  /// Tab2 展示计时状态/结束计时；真正的开始计时在 WorkPage。
   void _showAddSheet() {
     final FinanceController fc = Get.put(FinanceController());
     final WorkController wc = Get.put(WorkController());

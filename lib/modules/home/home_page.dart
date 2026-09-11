@@ -1,3 +1,13 @@
+// ============================================================
+// home/home_page.dart（主界面 · 顶层页面）
+// 职责：App 主框架——底部「记账 | 时钟」双 Tab（与 PageView 双向联动）；
+//       记账 Tab 内再分「记账 | 统计」子页，分别内嵌记账流水与 StatsView。
+// 关联：DashboardController(tag:'dashboard')（结余卡/预算/计时横幅数据）、
+//       FinanceController（账目与分类 CRUD）、WorkController（计时）、
+//       SyncController（同步状态动画）、StorageService（读取分类配置）、
+//       StatsView / WorkPage / TiltCard / CountUpText / SwipeActionCard。
+// 结构：结余卡（滚动折叠）→ 进行中计时横幅 → 吸顶筛选行 → 按天分组的账目列表。
+// ============================================================
 import 'dart:math';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
@@ -20,6 +30,7 @@ import '../work/work_page.dart';
 import '../finance/finance_controller.dart';
 import '../stats/stats_view.dart';
 
+/// 应用主界面（路由 `/`）：承载记账与时钟两大模块的顶层容器。
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -29,14 +40,23 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
+  // 底部导航当前页：0=记账，1=时钟
   int _currentIndex = 0;
+
+  // 概览聚合控制器：与旧版 DashboardPage 共用同一实例（tag: 'dashboard'）
   final DashboardController _dc =
       Get.put(DashboardController(), tag: 'dashboard');
+
+  // 两个 Tab 的 PageController：与底部导航双向联动（点击 / 滑动都会同步）
   final PageController _pageCtrl = PageController();
+
+  // 记账 Tab 的子页下标：0=记账，1=统计
   int _financeSubIndex = 0;
   int _financePlayKey = 0; // 切回记账页时自增，触发金额滚动动效
   DateTime? _financeMonthFilter; // 记账页月份筛选（null = 全部）
   final ScrollController _financeScroll = ScrollController();
+
+  // 结余卡折叠进度 0..1（由滚动通知驱动）与卡片实测高度（用于折叠计算）
   final ValueNotifier<double> _balanceCollapse = ValueNotifier(0);
   final GlobalKey _balanceKey = GlobalKey();
   double _balanceCardHeight = 320;
@@ -48,6 +68,7 @@ class _HomePageState extends State<HomePage>
   );
   Worker? _syncWorker;
 
+  /// 初始化：注册记账/工时控制器，并把「同步中」状态映射为顶部图标的旋转动画。
   @override
   void initState() {
     super.initState();
@@ -64,6 +85,7 @@ class _HomePageState extends State<HomePage>
     if (_sc.isSyncing.value) _syncSpin.repeat();
   }
 
+  /// 释放本页自建的 Worker、动画与 PageController（GetX 控制器不在此销毁）。
   @override
   void dispose() {
     _syncWorker?.dispose();
@@ -72,11 +94,13 @@ class _HomePageState extends State<HomePage>
     super.dispose();
   }
 
+  /// PageView 滑动完成回调：同步底部导航高亮；切回记账页时触发金额滚动动效。
   void _onPageChanged(int index) {
     if (index == 0) _financePlayKey++; // 切回记账页触发金额滚动动效
     setState(() => _currentIndex = index);
   }
 
+  /// 底部导航点击：先更新高亮，再动画滚动 PageView 到对应页。
   void _onNavTapped(int index) {
     setState(() => _currentIndex = index);
     _pageCtrl.animateToPage(
@@ -90,6 +114,7 @@ class _HomePageState extends State<HomePage>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
+      // 标题随 Tab 切换；右侧：同步状态按钮 + 设置入口
       appBar: AppBar(
         title: Text(_currentIndex == 0 ? '工墨记账' : '工墨时钟'),
         centerTitle: true,
@@ -144,6 +169,7 @@ class _HomePageState extends State<HomePage>
           ),
         ],
       ),
+      // 双 Tab 主体：记账页为自建 Column（内嵌子切换），时钟页直接复用 WorkPage
       body: PageView(
         controller: _pageCtrl,
         onPageChanged: _onPageChanged,
@@ -152,6 +178,7 @@ class _HomePageState extends State<HomePage>
           const WorkPage(),
         ],
       ),
+      // FAB 只在「记账 Tab 的记账子页」出现，统计子页与时钟 Tab 不显示
       floatingActionButton: _currentIndex == 0 && _financeSubIndex == 0
           ? FloatingActionButton(
               onPressed: _showQuickFinance,
@@ -232,6 +259,9 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 记账 Tab 外壳：顶部「记账 | 统计」胶囊 + AnimatedSwitcher 切换子页。
+  /// KeyedSubtree 以子页下标为 key，切换时旧页销毁、新页重建
+  /// （统计页因此会重新聚合一次数据）。
   Widget _buildFinanceTab() {
     return Column(
       children: [
@@ -252,6 +282,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 「记账 | 统计」胶囊切换；点回记账时自增 [_financePlayKey] 重播金额动画。
   Widget _buildFinanceSubToggle() {
     final cs = Theme.of(context).colorScheme;
     Widget segment(String label, int index) {
@@ -307,11 +338,16 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 记账子页：结余卡 + 计时横幅 + 吸顶筛选行 + 按天分组的账目列表。
+  ///
+  /// 用 CustomScrollView + Sliver 组合让筛选行能吸顶；外层滚动通知把垂直
+  /// 滚动量换算成结余卡折叠进度，见 [_balanceCollapse]。
   Widget _buildBookkeeping() {
     final fc = Get.find<FinanceController>();
 
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
+        // 滚动量 / 卡片高度 => 0..1 折叠进度；下拉回弹的负值不参与
         if (n.metrics.axis == Axis.vertical &&
             _balanceCardHeight > 0 &&
             n.metrics.pixels >= 0) {
@@ -323,6 +359,7 @@ class _HomePageState extends State<HomePage>
       child: CustomScrollView(
         controller: _financeScroll,
         slivers: [
+          // ① 结余卡：滚动时向上翻折收起
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             sliver: SliverToBoxAdapter(
@@ -339,7 +376,8 @@ class _HomePageState extends State<HomePage>
                     });
                     return _buildBalanceCard(key: _balanceKey);
                   }
-                  // 滚动折叠：用缓存高度做翻转收缩
+                  // 滚动折叠：卡片正常高度由内容撑开，直接改高度会因内容重排而抖动；
+                  // 这里固定外层高度，内部用 OverflowBox 保留原尺寸再做 3D 翻折
                   final visibleH = max(0.0, _balanceCardHeight * (1 - t));
                   if (visibleH < 0.5) return const SizedBox.shrink();
                   return LayoutBuilder(
@@ -377,11 +415,13 @@ class _HomePageState extends State<HomePage>
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
+          // ② 进行中计时横幅（无进行中记录时高度为 0）
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverToBoxAdapter(child: _buildActiveTimerBanner()),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 4)),
+          // ③ 吸顶筛选行：固定高度 40，上滚时停留在顶部
           SliverPersistentHeader(
             pinned: true,
             delegate: _FinanceHeaderDelegate(
@@ -389,6 +429,7 @@ class _HomePageState extends State<HomePage>
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          // ④ 账目列表：按天分组（底部留 96 给 FAB 与导航栏让位）
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
             sliver: SliverToBoxAdapter(child: _buildFinanceListContent(fc)),
@@ -398,6 +439,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 吸顶筛选行：左侧当前筛选状态（可一键清除），右侧年月选择入口。
   Widget _buildFinanceHeader() {
     final cs = Theme.of(context).colorScheme;
     final filter = _financeMonthFilter;
@@ -473,6 +515,8 @@ class _HomePageState extends State<HomePage>
           : '',
     );
 
+    // 应用总预算输入：留空视为 0（清除，自动回落为分类之和）；
+    // 非空时校验不能低于已分配的分类预算之和
     // 返回 null 表示成功；否则返回错误提示（不弹 snackbar）
     String? applyTotal() {
       final raw = totalCtrl.text.trim();
@@ -487,7 +531,7 @@ class _HomePageState extends State<HomePage>
       return null;
     }
 
-    var closing = false;
+    var closing = false; // 是否通过「完成」正常关闭，避免 whenComplete 重复应用
 
     Get.dialog(
       AlertDialog(
@@ -644,6 +688,7 @@ class _HomePageState extends State<HomePage>
                           ],
                         ),
                         const SizedBox(height: 4),
+                        // 分类进度条：从 0 动画到使用率（超 100% 截断，颜色由阈值决定）
                         ClipRRect(
                           borderRadius: BorderRadius.circular(3),
                           child: TweenAnimationBuilder<double>(
@@ -716,6 +761,7 @@ class _HomePageState extends State<HomePage>
   void _showBudgetEditDialog(
       {String? existingCatId, double? existingAmount}) {
     final cs = Theme.of(context).colorScheme;
+    // 新增时只列出尚未设置预算的支出分类；编辑时保留当前分类（即使已设预算）
     final expenseCats = StorageService()
         .categories
         .where((c) =>
@@ -798,6 +844,8 @@ class _HomePageState extends State<HomePage>
                 Get.snackbar('提示', '请输入有效的预算金额');
                 return;
               }
+              // 校验：其他分类已分配额度 + 本次额度 不能超过总预算
+              //（编辑时先扣除该分类原有额度，避免把自己算两遍）
               final others = _dc.allocatedBudget -
                   (existingCatId != null
                       ? (_dc.budgets[existingCatId] ?? 0)
@@ -862,6 +910,8 @@ class _HomePageState extends State<HomePage>
     (Icons.more_horiz_rounded, '更多'),
   ];
 
+  /// 结余卡：毛玻璃渐变 + 倾斜高光，展示本月结余/收支、快捷菜单与预算进度。
+  /// key 由外部传入（_balanceKey）用于测量卡片实际高度。
   Widget _buildBalanceCard({Key? key}) {
     final cs = Theme.of(context).colorScheme;
     return Obx(
@@ -1060,6 +1110,8 @@ class _HomePageState extends State<HomePage>
                               child: Row(
                                 children: [
                                   for (final seg in segments)
+                                    // Expanded 的 flex 必须是正整数：
+                                    // 金额放大 1000 倍取整，并保证最小为 1
                                     Expanded(
                                       flex: (seg.$2 * 1000)
                                           .round()
@@ -1251,6 +1303,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 进行中计时横幅：有进行中记录时淡入显示（AnimatedSwitcher 靠不同 key 切换）。
   Widget _buildActiveTimerBanner() {
     final cs = Theme.of(context).colorScheme;
     return Obx(() {
@@ -1278,7 +1331,7 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _activeTimerBannerContent(ColorScheme cs, WorkEntry entry) {
-    // 依赖每秒跳动的 todayWorkDuration，让横幅实时刷新
+    // 故意读取每秒跳动的 todayWorkDuration：为 Obx 建立依赖，让横幅时长实时刷新
     _dc.todayWorkDuration.value;
     final elapsed = DateHelper.formatDurationShort(entry.liveElapsed);
     return Container(
@@ -1357,6 +1410,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 账目列表内容：按月份筛选后按天分组渲染，空态给提示。
   Widget _buildFinanceListContent(FinanceController fc) {
     return Obx(() {
       final month = _financeMonthFilter;
@@ -1380,6 +1434,8 @@ class _HomePageState extends State<HomePage>
         );
       }
 
+      // 按“日期文案”分组；order 记录首次出现顺序。
+      // entries 已按时间倒序，因此分组天然是倒序，无需再排序
       final groups = <String, List<FinanceEntry>>{};
       final order = <String>[];
       for (final e in entries) {
@@ -1391,6 +1447,7 @@ class _HomePageState extends State<HomePage>
         groups[key]!.add(e);
       }
 
+      // 交错入场序号跨分组连续自增，整屏条目按顺序逐个出现
       var animIndex = 0;
       return Column(
         children: [
@@ -1412,6 +1469,7 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  // 日期标题：今天/昨天/x月x日 + 当天收支合计（同一天判断忽略时分秒）
   Widget _buildDayHeader(List<FinanceEntry> entries) {
     final income = entries
         .where((e) => e.type == FinanceType.income)
@@ -1471,6 +1529,8 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 单条账目卡片：分类色图标 + 备注/分类 + 自动记账标签 + 金额；
+  /// 外层 SwipeActionCard 负责左滑「修改/删除」。
   Widget _buildFinanceItemCard(FinanceController fc, FinanceEntry entry) {
     final cs = Theme.of(context).colorScheme;
     final isIncome = entry.type == FinanceType.income;
@@ -1537,6 +1597,7 @@ class _HomePageState extends State<HomePage>
                         : cs.surfaceContainerHighest.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(6),
                   ),
+                  // notificationSrc 非空表示这条来自通知自动记账
                   child: Text(
                     entry.notificationSrc != null ? '自动' : '手动',
                     style: TextStyle(
@@ -1565,6 +1626,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 左滑删除的二次确认；删除后刷新 Dashboard 并重建列表。
   void _confirmDeleteFinance(FinanceController fc, FinanceEntry entry) {
     Get.dialog(AlertDialog(
       title: const Text('删除账目'),
@@ -1585,6 +1647,8 @@ class _HomePageState extends State<HomePage>
     ));
   }
 
+  /// 编辑账目底部表单：保存时原地更新字段并写入 `updatedAt`（供多设备合并判新），
+  /// 再交给 FinanceController.saveEntry 落盘。
   void _showEditFinanceSheet(FinanceController fc, FinanceEntry entry) {
     final cs = Theme.of(context).colorScheme;
     final amountCtrl = TextEditingController(text: entry.amount.toString());
@@ -1746,6 +1810,7 @@ class _HomePageState extends State<HomePage>
       final activeCats =
           fc.categories.where((c) => c.type == type).toList();
       if (selectedCatId.value.isEmpty && activeCats.isNotEmpty) {
+        // 默认选中第一个分类；放到帧后回调，避免 build 期间修改 Rx 状态
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (selectedCatId.value.isEmpty) {
             selectedCatId.value = activeCats.first.id;
@@ -1806,8 +1871,7 @@ class _HomePageState extends State<HomePage>
     });
   }
 
-  /// “分类管理”网格入口（置于最前）
-  /// 账目时间行：点击选择日期与时间（默认当前时间点）
+  /// 账目时间行：点击选择日期与时间（默认当前时间点）。
   Widget _entryTimeRow(Rx<DateTime> entryTime) {
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
@@ -1839,6 +1903,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 先选日期再选时间，任一步取消则整体放弃；结果写回传入的 Rx。
   Future<void> _pickEntryTime(Rx<DateTime> entryTime) async {
     final d = await showDatePicker(
       context: context,
@@ -1855,6 +1920,7 @@ class _HomePageState extends State<HomePage>
     entryTime.value = DateTime(d.year, d.month, d.day, tm.hour, tm.minute);
   }
 
+  /// “分类管理”网格入口（置于分类网格最前）。
   Widget _categoryManageTile(FinanceController fc, ColorScheme cs,
       bool isExpense, RxString selectedCatId) {
     return GestureDetector(
@@ -1921,6 +1987,7 @@ class _HomePageState extends State<HomePage>
                         )
                       : ReorderableListView.builder(
                           shrinkWrap: true,
+                          // 关闭整行长按拖动，改用行首拖拽图标精确控制
                           buildDefaultDragHandles: false,
                           itemCount: cats.length,
                           itemExtent: 52,
@@ -1930,6 +1997,7 @@ class _HomePageState extends State<HomePage>
                             final cat = cats[index];
                             final color =
                                 IconUtils.hex(cat.color, cs.primary);
+                            // 至少保留一个分类：仅剩 1 个时禁用删除
                             final canDelete = cats.length > 1;
                             return ListTile(
                               key: ValueKey(cat.id),
@@ -1981,6 +2049,7 @@ class _HomePageState extends State<HomePage>
                                 onPressed: canDelete
                                     ? () {
                                         HapticFeedback.selectionClick();
+                                        // 删除的正是当前选中分类时先清空，避免表单指向已删分类
                                         if (selectedCatId.value == cat.id) {
                                           selectedCatId.value = '';
                                         }
@@ -2029,6 +2098,7 @@ class _HomePageState extends State<HomePage>
     final cs = Theme.of(context).colorScheme;
     final nameCtrl = TextEditingController(text: cat.name);
     final selectedIcon = cat.icon.obs;
+    // 颜色为 null 表示“随机”，保存时才生成随机色
     final selectedColor = Rxn<Color>(IconUtils.hex(cat.color));
 
     Get.dialog(
@@ -2137,12 +2207,14 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  // 可选内置图标（与 IconUtils.category 的 key 对应）
   static const _categoryIconKeys = [
     'restaurant', 'directions_car', 'print', 'computer', 'work', 'chat',
     'attach_money', 'more_horiz', 'school', 'favorite', 'sports_esports',
     'savings', 'home', 'flight', 'local_cafe', 'music_note',
   ];
 
+  // 预设分类色板（与“随机”选项配合使用）
   static const _categoryColorPalette = [
     Color(0xFFE53935), Color(0xFFFB8C00), Color(0xFFFDD835), Color(0xFF43A047),
     Color(0xFF00ACC1), Color(0xFF1E88E5), Color(0xFF8E24AA), Color(0xFFEC407A),
@@ -2291,6 +2363,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  // “随机”色块：selected 为 null 时高亮，表示保存时随机分配颜色
   Widget _randomColorOption(ColorScheme cs, Rxn<Color> selected) {
     final isRandom = selected.value == null;
     return GestureDetector(
@@ -2328,11 +2401,14 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// 随机生成柔和的颜色：固定饱和度/亮度、只随机色相，避免刺眼。
   Color _randomPleasantColor() {
     final rnd = Random();
     return HSLColor.fromAHSL(1, rnd.nextDouble() * 360, 0.55, 0.55).toColor();
   }
 
+  /// 快速记账底部表单：金额/收支 pill/分类网格/备注/时间；
+  /// 保存调用 FinanceController.addEntry 并刷新 Dashboard。
   void _showQuickFinance() {
     final fc = Get.find<FinanceController>();
     final cs = Theme.of(context).colorScheme;
@@ -2471,6 +2547,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  // 支出/收入切换胶囊（快速记账与编辑表单共用）
   Widget _typePill({
     required String label,
     required IconData icon,
@@ -2510,7 +2587,6 @@ class _HomePageState extends State<HomePage>
     );
   }
 }
-/// 预算圆环：显示使用进度
 /// 首次出现时从左滑入并淡入（按 index 交错延迟）
 class _StaggeredEntrance extends StatefulWidget {
   const _StaggeredEntrance({
@@ -2554,6 +2630,7 @@ class _StaggeredEntranceState extends State<_StaggeredEntrance> {
   }
 }
 
+/// 预算圆环：显示使用进度，中心内容由调用方传入（金额 + 文案）。
 class _BudgetRing extends StatelessWidget {
   final double progress; // 0..1（可超过 1，绘制时截断）
   final Color progressColor;
@@ -2590,6 +2667,7 @@ class _BudgetRing extends StatelessWidget {
   }
 }
 
+/// 圆环绘制器：先画底环，再从 12 点方向顺时针画进度弧（圆头笔刷）。
 class _BudgetRingPainter extends CustomPainter {
   final double progress;
   final Color progressColor;
@@ -2612,6 +2690,7 @@ class _BudgetRingPainter extends CustomPainter {
       ..color = trackColor;
     canvas.drawCircle(size.center(Offset.zero), rect.width / 2, track);
 
+    // 超支时 clamp 到 1，避免弧线画过头
     final p = progress.clamp(0.0, 1.0);
     if (p > 0) {
       final arc = Paint()
@@ -2630,7 +2709,7 @@ class _BudgetRingPainter extends CustomPainter {
 }
 /// “全部账目”筛选行：滚动时吸附在顶部
 class _FinanceHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final Widget Function() builder;
+  final Widget Function() builder; // 每次 build 时调用，实时读取页面筛选状态
 
   _FinanceHeaderDelegate({required this.builder});
 
@@ -2659,6 +2738,8 @@ class _FinanceHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   double get minExtent => 40;
 
+  // 头部内容依赖页面 State（_financeMonthFilter）而非 Rx，
+  // 无法精准判断变化，干脆始终重建以保证筛选状态实时反映
   @override
   bool shouldRebuild(covariant _FinanceHeaderDelegate oldDelegate) => true;
 }

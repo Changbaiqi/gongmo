@@ -1,3 +1,9 @@
+// ============================================================
+// stats/stats_view.dart（Stats 模块 · 页面）
+// 职责：统计页——周/月/年切换与前后翻页、收支汇总、趋势折线图、分类环形图。
+// 关联：StatsController（本页 Get.put 创建）、TrendChart、DonutChart、CountUpText；
+//       内嵌于 HomePage 记账 Tab 的「统计」子页。
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -6,6 +12,10 @@ import 'widgets/trend_chart.dart';
 import 'widgets/donut_chart.dart';
 import '../../core/widgets/count_up_text.dart';
 
+/// 记账统计视图：数据全部来自 [StatsController]，自身只负责布局与切换动画。
+///
+/// 生命周期：被 HomePage 的子页 AnimatedSwitcher 创建/销毁（切走即重建），
+/// 因此每次 initState 都会重新注册控制器并刷新一次数据。
 class StatsView extends StatefulWidget {
   const StatsView({super.key});
 
@@ -16,6 +26,7 @@ class StatsView extends StatefulWidget {
 class _StatsViewState extends State<StatsView>
     with SingleTickerProviderStateMixin {
   late final StatsController _ctrl;
+  // 切换粒度/翻页时重放的内容入场动画（配合下方 Fade/SlideTransition）
   late final AnimationController _switchAnim = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 300),
@@ -26,7 +37,7 @@ class _StatsViewState extends State<StatsView>
   void initState() {
     super.initState();
     _ctrl = Get.put(StatsController());
-    _ctrl.reload();
+    _ctrl.reload(); // 重新进入统计页时同步最新账目（可能刚在其他页面记过账）
   }
 
   @override
@@ -119,6 +130,7 @@ class _StatsViewState extends State<StatsView>
     );
   }
 
+  /// 粒度胶囊：切换后重放入场动画，让内容变化可感知。
   Widget _periodSegment(String label, StatsPeriod p, ColorScheme cs) {
     final active = _ctrl.period.value == p;
     return GestureDetector(
@@ -148,6 +160,7 @@ class _StatsViewState extends State<StatsView>
     );
   }
 
+  // 区间导航：左右箭头翻页；右箭头在区间已到当前时段时禁用
   Widget _buildRangeBar(ColorScheme cs) {
     return Row(
       children: [

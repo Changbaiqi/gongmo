@@ -1,7 +1,15 @@
+// ============================================================
+// 图标与颜色解析工具（core/utils）
+// 职责：把数据模型中以字符串保存的图标 key / 颜色值转换为 Flutter 对象
+// 关联：TimerTag.icon、Category.icon/color；各标签栏、分类网格使用
+// ============================================================
+
 import 'package:flutter/material.dart';
 
+/// 图标 key → IconData、颜色字符串 → Color 的统一转换入口。
+/// 图标 key 随数据持久化，因此所有映射必须保持稳定，未知 key 回退默认图标。
 class IconUtils {
-  /// 标签可选图标集
+  /// 计时标签可选图标集（key 持久化在 TimerTag.icon）
   static const Map<String, IconData> tagIcons = {
     'work': Icons.work_outline_rounded,
     'school': Icons.school_outlined,
@@ -25,16 +33,18 @@ class IconUtils {
     'label': Icons.label_outline_rounded,
   };
 
+  /// 按 key 取标签图标，未知 key 回退为默认标签图标
   static IconData tag(String name) =>
       tagIcons[name] ?? Icons.label_outline_rounded;
 
-  /// 分类可选图标（记账分类）
+  /// 记账分类可选图标 key 列表（供分类编辑页选择）
   static const List<String> categoryIconKeys = [
     'restaurant', 'directions_car', 'print', 'computer', 'work', 'chat',
     'attach_money', 'more_horiz', 'school', 'favorite', 'sports_esports',
     'savings', 'home', 'flight', 'local_cafe', 'music_note',
   ];
 
+  /// 按 key 取分类图标，未知 key 回退为默认标签图标
   static IconData category(String name) {
     switch (name) {
       case 'work':
@@ -74,6 +84,7 @@ class IconUtils {
     }
   }
 
+  /// 解析 "#RRGGBB" 颜色字符串（补全不透明 Alpha），非法值返回 [fallback]
   static Color hex(String? hex, [Color fallback = Colors.grey]) {
     if (hex == null) return fallback;
     final value = hex.replaceFirst('#', '');

@@ -1,3 +1,9 @@
+// ============================================================
+// stopwatch_page.dart（独立秒表工具）
+// 职责：秒表正计时、计次分段、历史记录（复位保存、载入后继续累计）
+// 关联：历史存 StorageService 配置 'stopwatch_history'；从 TimeMorePage 进入，
+//       不依赖 WorkController
+// ============================================================
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -56,6 +62,8 @@ String _fmtSw(Duration d) {
 }
 
 /// 秒表：正计时、计次（分段用时）、复位与历史记录
+///
+/// 时间基准是系统 [Stopwatch]（单调时钟），界面定时器只影响刷新频率。
 class StopwatchPage extends StatefulWidget {
   const StopwatchPage({super.key});
 
@@ -66,28 +74,30 @@ class StopwatchPage extends StatefulWidget {
 class _StopwatchPageState extends State<StopwatchPage>
     with TickerProviderStateMixin {
   static const _historyKey = 'stopwatch_history';
-  static const _historyMax = 50;
+  static const _historyMax = 50; // 历史最多保留条数
 
-  final Stopwatch _sw = Stopwatch();
-  Timer? _ticker;
+  final Stopwatch _sw = Stopwatch(); // 系统单调时钟，避免手动累加误差
+  Timer? _ticker; // 运行中的 30ms 刷新定时器
 
   /// 载入历史记录时的基准用时（继续计时会在此基础上累加）
   Duration _base = Duration.zero;
 
   int _lapSeq = 0;
-  final List<(int, Duration)> _laps = []; // (计次序号, 累计用时)
-  final List<_StopwatchRecord> _history = [];
+  final List<(int, Duration)> _laps = []; // (计次序号, 累计用时)，最新在前
+  final List<_StopwatchRecord> _history = []; // 历史记录，最新在前
 
+  // 运行中的呼吸光晕（repeat 往返）
   late final AnimationController _pulse = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
   );
+  // 计次时时间数字的弹跳反馈（forward 一次）
   late final AnimationController _pop = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 240),
   );
 
-  Duration get _elapsed => _base + _sw.elapsed;
+  Duration get _elapsed => _base + _sw.elapsed; // 载入历史基准 + 本次计时
   bool get _running => _sw.isRunning;
   bool get _hasTime => _elapsed > Duration.zero;
 
@@ -108,6 +118,7 @@ class _StopwatchPageState extends State<StopwatchPage>
 
   // ---------------- 历史记录 ----------------
 
+  /// 从本地配置读取历史；单条解析失败跳过，不影响整体
   void _loadHistory() {
     final raw = StorageService().getConfig(_historyKey);
     if (raw is! List) return;
@@ -121,6 +132,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     }
   }
 
+  /// 持久化历史（异步失败也忽略，秒表历史可容忍丢失）
   void _persistHistory() {
     try {
       StorageService()
@@ -133,7 +145,9 @@ class _StopwatchPageState extends State<StopwatchPage>
   /// 把当前计时保存为一条历史（复位 / 载入其它记录前调用）
   void _saveCurrentAsRecord() {
     final elapsed = _elapsed;
+    // 空计时不产生历史
     if (elapsed <= Duration.zero && _laps.isEmpty) return;
+    // 存储时按计次序号升序（旧 → 新），与界面展示顺序相反
     final sorted = List.of(_laps)
       ..sort((a, b) => a.$1.compareTo(b.$1));
     _history.insert(
@@ -145,6 +159,7 @@ class _StopwatchPageState extends State<StopwatchPage>
         lapTotalsMs: [for (final l in sorted) l.$2.inMilliseconds],
       ),
     );
+    // 超出上限时丢弃最旧的记录
     if (_history.length > _historyMax) {
       _history.removeRange(_historyMax, _history.length);
     }
@@ -159,6 +174,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     setState(() {
       _base = Duration(milliseconds: rec.totalMs);
       _laps.clear();
+      // 存储是旧→新，恢复成界面用的新→旧
       for (var i = rec.lapTotalsMs.length - 1; i >= 0; i--) {
         _laps.add((i + 1, Duration(milliseconds: rec.lapTotalsMs[i])));
       }
@@ -166,6 +182,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     });
   }
 
+  /// 打开历史弹窗，选中某条后载入继续计时
   Future<void> _showHistory() async {
     final picked = await showDialog<_StopwatchRecord>(
       context: context,
@@ -179,6 +196,7 @@ class _StopwatchPageState extends State<StopwatchPage>
 
   // ---------------- 计时控制 ----------------
 
+  /// 停止计时与刷新，并同步收起呼吸动画、释放常亮
   void _stopTicking() {
     _sw.stop();
     _ticker?.cancel();
@@ -193,6 +211,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     _sw.reset();
   }
 
+  /// 常亮开关的静默封装：插件通道不可用时忽略异常
   void _wakelock(bool on) {
     try {
       if (on) {
@@ -203,6 +222,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     } catch (_) {}
   }
 
+  /// 开始/暂停切换：开始用 30ms 定时器刷新界面（Stopwatch 本身持续走时）
   void _toggle() {
     HapticFeedback.mediumImpact();
     if (_sw.isRunning) {
@@ -220,6 +240,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     }
   }
 
+  /// 记录一次计次：存累计用时，最新一条插到列表头部
   void _lap() {
     if (!_sw.isRunning) return;
     HapticFeedback.selectionClick();
@@ -228,6 +249,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     _pop.forward(from: 0);
   }
 
+  /// 复位：先把当前计时存为历史，再清零
   void _reset() {
     HapticFeedback.mediumImpact();
     _saveCurrentAsRecord(); // 复位即保存一次历史
@@ -271,6 +293,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     );
   }
 
+  /// 表盘：进度弧按“当前分钟内的百分比”走过一圈（每分钟归零）
   Widget _buildDial(ColorScheme cs) {
     final elapsed = _elapsed;
     final progress = (elapsed.inMilliseconds % 60000) / 60000.0;
@@ -355,6 +378,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     );
   }
 
+  /// 左侧按钮运行中为「计次」、停止后为「复位」；右侧为开始/暂停
   Widget _buildButtons() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -448,6 +472,7 @@ class _StopwatchPageState extends State<StopwatchPage>
     );
   }
 
+  /// 计次列表：倒序展示（最新在上），分段用时 = 本次累计 − 上一次累计
   Widget _buildLapList(ColorScheme cs) {
     if (_laps.isEmpty) {
       return Center(
@@ -464,6 +489,7 @@ class _StopwatchPageState extends State<StopwatchPage>
       itemCount: _laps.length,
       itemBuilder: (context, i) {
         final (id, total) = _laps[i];
+        // 列表倒序，i+1 是更早的一次计次；最早一次的分段即其累计值
         final prev =
             (i + 1 < _laps.length) ? _laps[i + 1].$2 : Duration.zero;
         final split = total - prev;
@@ -538,6 +564,7 @@ class _HistoryDialog extends StatefulWidget {
 }
 
 class _HistoryDialogState extends State<_HistoryDialog> {
+  /// 二次确认后删除历史并立即回写持久化
   Future<void> _confirmDelete(_StopwatchRecord rec, ColorScheme cs) async {
     final ok = await showDialog<bool>(
       context: context,

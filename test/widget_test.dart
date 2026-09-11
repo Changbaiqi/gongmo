@@ -1,3 +1,8 @@
+// ============================================================
+// 组件级 Widget 测试
+// 覆盖：图案锁拖拽选点回调、秒表开始/计次/暂停/复位、秒表历史保存与查看
+// ============================================================
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gongmo/core/widgets/pattern_lock.dart';

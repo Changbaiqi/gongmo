@@ -1,3 +1,11 @@
+// ============================================================
+// 本地存储服务（data/services）
+// 职责：全 App 唯一的持久化出口。持有所有实体的内存列表，
+//       负责按年分片 JSON 读写、删除墓碑、导入/导出/合并/恢复
+// 关联：Repository 层读取内存列表；上层控制器通过 add/update/remove
+//       方法修改；每次落盘触发 onDataChanged → SyncController 自动同步
+// ============================================================
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -10,6 +18,14 @@ import '../models/timer_tag.dart';
 import '../models/invoice_profile.dart';
 import 'sync_merge.dart';
 
+/// JSON 文件持久化单例。
+///
+/// 数据文件位于 `Documents/gongmo_data/`：
+/// - 记录类（工时/账目）按年份分片：work_entries_{年}.json、finance_entries_{年}.json
+/// - 配置类（分类/账户/标签/发票抬头/config/墓碑/自动记账队列）为单文件
+///
+/// 使用方式：启动时调用 [init]；之后直接读写内存列表并通过
+/// add/update/remove 系列方法落盘。
 class StorageService {
   static final StorageService _instance = StorageService._();
   factory StorageService() => _instance;
@@ -34,6 +50,7 @@ class StorageService {
   void Function()? onDataChanged;
   bool _restoring = false;
 
+  /// 通知数据已变化；恢复/合并过程中（_restoring=true）静默，避免回环同步
   void _notifyDataChanged() {
     if (_restoring) return;
     try {
@@ -48,6 +65,7 @@ class StorageService {
   List<TimerTag> get timerTags => _timerTags;
   List<InvoiceProfile> get invoiceProfiles => _invoiceProfiles;
 
+  /// 创建数据目录并加载全部数据（幂等，可被后台引擎重复调用）
   Future<void> init() async {
     if (_initialized) return;
     final appDir = await getApplicationDocumentsDirectory();
@@ -62,6 +80,8 @@ class StorageService {
   static const _workPrefix = 'work_entries';
   static const _financePrefix = 'finance_entries';
 
+  /// 全量加载：分片记录 → 旧数据迁移 → 实体列表 → 配置 → 墓碑；
+  /// 分类/账户/标签首次为空时写入默认数据
   Future<void> _loadAll() async {
     // 按年分片加载：work_entries_2025.json / work_entries_2026.json ...
     _workEntries =
@@ -223,10 +243,12 @@ class StorageService {
     }
   }
 
+  /// 覆盖写入自动记账队列
   Future<void> writeAutoQueue(List<Map<String, dynamic>> queue) async {
     await _autoQueueFile.writeAsString(json.encode(queue));
   }
-  /// 写入轻量配置项
+
+  /// 写入轻量配置项（不触发自动同步；如需参与云端备份用 [setDataConfig]）
   Future<void> setConfig(String key, dynamic value) async {
     _config[key] = value;
     await _saveConfigFile();
@@ -328,6 +350,8 @@ class StorageService {
     await _saveList('invoice_profiles.json', _invoiceProfiles);
     _notifyDataChanged();
   }
+
+  // ---------- 各实体增删改：统一在内存列表上操作并落盘 ----------
 
   void addInvoiceProfile(InvoiceProfile profile) {
     _invoiceProfiles.add(profile);
@@ -438,6 +462,7 @@ class StorageService {
     saveTimerTags();
   }
 
+  /// 导出全部数据为一个 JSON 结构（本地导出/自动同步去重均使用）
   Map<String, dynamic> exportAllData() {
     return {
       'workEntries': _workEntries.map((e) => e.toJson()).toList(),

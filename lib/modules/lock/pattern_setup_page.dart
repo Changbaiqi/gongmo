@@ -1,3 +1,10 @@
+// ============================================================
+// pattern_setup_page.dart（锁屏模块 · 图案设置页）
+// 职责：设置/修改解锁图案的三步流程——验证旧图案 → 绘制新图案 → 再次确认，
+//       确认一致后写入 LockController。
+// 关联：LockController（verifyPattern/savePattern）；由设置页“应用锁/修改
+//       解锁图案”入口或开启应用锁时进入，成功后返回 true。
+// ============================================================
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -5,9 +12,13 @@ import 'package:get/get.dart';
 import '../../core/widgets/pattern_lock.dart';
 import 'lock_controller.dart';
 
+/// 图案设置流程的三个状态：验证旧图案 → 绘制新图案 → 二次确认
 enum _SetupStep { verify, draw, confirm }
 
-/// 设置/修改解锁图案：先验证旧图案（若已设置），再绘制并确认新图案
+/// 设置/修改解锁图案：先验证旧图案（若已设置），再绘制并确认新图案。
+///
+/// 首次设置时跳过 verify 直接从 draw 开始；修改时三步齐全。
+/// 两次绘制必须完全一致（listEquals 比较点顺序）才会保存。
 class PatternSetupPage extends StatefulWidget {
   const PatternSetupPage({super.key});
 
@@ -36,6 +47,10 @@ class _PatternSetupPageState extends State<PatternSetupPage> {
         _SetupStep.confirm => '请再次绘制刚才的图案',
       };
 
+  /// 每次绘制完成的回调，按当前步骤分发：
+  /// - verify：校验旧图案，通过才进入 draw；
+  /// - draw：至少 4 点则暂存为 `_first`，进入 confirm；
+  /// - confirm：与 `_first` 完全一致才保存并返回 true，否则退回 draw 重画。
   Future<void> _onCompleted(List<int> pattern) async {
     switch (_step) {
       case _SetupStep.verify:

@@ -1,7 +1,24 @@
+// ============================================================
+// 计时标签模型（data/models）
+// 职责：计时标签的数据结构、4 种收入模式定义与 JSON 序列化
+// 关联：WorkController（标签 CRUD/排序/结算）、StorageService（timer_tags.json）
+// ============================================================
+
+/// 计时标签：正计时开始时选择一个标签，停止时按 [incomeType] 结算收入。
+///
+/// 收入模式：
+/// - none   纯计时，不产生账目
+/// - hourly 按时薪结算：时长(小时) × hourlyRate
+/// - manual 停止时弹窗让用户输入本次所得
+/// - fixed  结束即按 fixedSalary 固定金额结算
 class TimerTag {
   final String id;
   String name;
+
+  /// 图标 key（对应 IconUtils.tagIcons）
   String icon;
+
+  /// 颜色 "#RRGGBB"（界面主色与图表占比色）
   String color;
 
   /// 是否工作标签（与 incomeType 联动：incomeType != none）
@@ -67,6 +84,7 @@ class TimerTag {
     };
   }
 
+  /// 首次启动时写入的默认标签（均为纯计时，收入模式可在标签编辑中修改）
   static List<TimerTag> defaults() {
     return [
       TimerTag(

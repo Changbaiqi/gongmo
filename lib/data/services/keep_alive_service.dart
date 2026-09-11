@@ -1,3 +1,10 @@
+// ============================================================
+// 后台保活辅助服务（data/services）
+// 职责：引导用户加入电池优化白名单、跳转系统设置，保障通知监听常驻
+// 关联：设置页「后台保活」分组；Android MethodChannel
+//       com.gongmo.cbq.gongmo/settings（MainActivity 侧实现）
+// ============================================================
+
 import 'dart:async';
 
 import 'package:flutter/services.dart';

@@ -1,3 +1,9 @@
+// ============================================================
+// 翻牌时钟组件（core/widgets）
+// 职责：HH:mm:ss 翻牌显示，秒（或计时秒数）变化时播放翻转动画
+// 关联：WorkPage 顶部时钟、全屏计时页、计时牌（FlipClock.elapsed）
+// ============================================================
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
@@ -149,6 +155,7 @@ class _FlipDigitState extends State<FlipDigit>
     _current = widget.digit;
   }
 
+  /// 数字变化时记录旧值并重播翻牌动画（旧值用于显示翻走的上半/下半张牌）
   @override
   void didUpdateWidget(covariant FlipDigit oldWidget) {
     super.didUpdateWidget(oldWidget);

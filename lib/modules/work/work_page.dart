@@ -1,3 +1,10 @@
+// ============================================================
+// work_page.dart（工时模块主页面）
+// 职责：顶部「计时 | 统计」切换；计时页内嵌正计时/打卡两个可滑动子页，
+//       底部固定今日记录区，顶部标签栏支持添加/切换/长按管理标签
+// 关联：WorkController（Get.put 常驻）、FullscreenTimerPage、WorkStatsView；
+//       被 HomePage 第二个 Tab 直接内嵌
+// ============================================================
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +20,9 @@ import 'widgets/fullscreen_timer_page.dart';
 import 'widgets/work_stats_view.dart';
 import 'work_controller.dart';
 
+/// 工时主页（StatefulWidget 仅负责页面级时间刷新与 Tab/PageView 状态）
+///
+/// 业务状态都在 WorkController 中，通过 Obx 响应式重建局部 UI。
 class WorkPage extends StatefulWidget {
   const WorkPage({super.key});
 
@@ -23,9 +33,9 @@ class WorkPage extends StatefulWidget {
 class _WorkPageState extends State<WorkPage> {
   final WorkController _ctrl = Get.put(WorkController());
 
-  DateTime _now = DateTime.now();
-  Timer? _clockTimer;
-  DateTime _recordDate = DateTime.now(); // 今日记录筛选日期
+  DateTime _now = DateTime.now(); // 每秒刷新的“现在”，供翻牌时钟显示
+  Timer? _clockTimer; // 页面级秒表 timer，仅驱动时间显示
+  DateTime _recordDate = DateTime.now(); // 底部记录区的筛选日期（默认今天）
 
   /// 顶部页签：false=计时（正计时+打卡合并页） true=数据统计
   bool _statsMode = false;
@@ -39,6 +49,7 @@ class _WorkPageState extends State<WorkPage> {
   @override
   void initState() {
     super.initState();
+    // 每秒重建一次页面（仅用于时钟显示，计时状态由 WorkController 每秒更新）
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
@@ -58,6 +69,7 @@ class _WorkPageState extends State<WorkPage> {
         const SizedBox(height: 8),
         _buildTopToggle(),
         Expanded(
+          // KeyedSubtree 让计时/统计切换时触发 AnimatedSwitcher 的淡入淡出
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
             child: KeyedSubtree(
@@ -73,6 +85,7 @@ class _WorkPageState extends State<WorkPage> {
 
   // ---------------- 顶部页签：计时 | 统计 ----------------
 
+  /// 顶部「计时 | 统计」分段切换器
   Widget _buildTopToggle() {
     final cs = Theme.of(context).colorScheme;
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(20));
@@ -133,6 +146,7 @@ class _WorkPageState extends State<WorkPage> {
 
   // ---------------- 合并后的计时页 ----------------
 
+  /// 计时模式主布局：标签栏 → 正计时/打卡 pills → PageView 主体 → 固定底部记录区
   Widget _buildMergedTimerPage() {
     return Obx(() => Column(
           children: [
@@ -273,7 +287,7 @@ class _WorkPageState extends State<WorkPage> {
         ));
   }
 
-  /// 页 1：打卡
+  /// 页 1：打卡（正计时进行中时禁止打卡，两种计时互斥）
   Widget _buildClockPage() {
     final cs = Theme.of(context).colorScheme;
     final busy = _ctrl.isTimerRunning.value && !_ctrl.isClockedIn.value;
@@ -337,6 +351,10 @@ class _WorkPageState extends State<WorkPage> {
 
   // ---------------- 统一今日记录 ----------------
 
+  /// 底部固定高度的当日记录区：按 `_recordDate` 筛选，可点日历换日期
+  ///
+  /// 汇总时长时，进行中的记录只有“今天”才计入其实时长度，
+  /// 避免翻到过去日期时把仍在计时的时长算进去。
   Widget _buildTodayRecords() {
     final cs = Theme.of(context).colorScheme;
     final isToday = DateHelper.isSameDay(_recordDate, DateTime.now());
@@ -441,6 +459,7 @@ class _WorkPageState extends State<WorkPage> {
     );
   }
 
+  /// 单条记录行：长按可编辑，进行中不显示删除按钮
   Widget _buildSessionItem(WorkEntry entry) {
     final cs = Theme.of(context).colorScheme;
     final isClock = entry.projectName == '打卡';
@@ -519,7 +538,7 @@ class _WorkPageState extends State<WorkPage> {
             ? entry.income!.toStringAsFixed(2)
             : '');
     var start = entry.startTime;
-    final running = entry.endTime == null;
+    final running = entry.endTime == null; // 进行中的记录只允许改开始时间
     var end = entry.endTime;
 
     String fmt(DateTime t) =>
@@ -632,6 +651,7 @@ class _WorkPageState extends State<WorkPage> {
                   }
                   final income =
                       double.tryParse(incomeCtrl.text.trim()) ?? 0;
+                  // 这里只更新记录本身，不会同步改动已生成的财务账目
                   _ctrl.updateEntry(entry.copyWith(
                     projectName: name,
                     description: descCtrl.text.trim(),
@@ -654,9 +674,10 @@ class _WorkPageState extends State<WorkPage> {
 
   // ---------------- 正计时视图 ----------------
 
+  /// 顶部横向标签栏：点击标签切换，长按标签编辑；「+」长按进入管理
   Widget _buildTagRow() {
     return Obx(() {
-      _ctrl.tagsRevision.value; // 标签增删/排序/编辑后刷新
+      _ctrl.tagsRevision.value; // 读取版本号使增删/排序/编辑后触发重建
       return SizedBox(
         height: 44,
         child: ListView(
@@ -673,6 +694,7 @@ class _WorkPageState extends State<WorkPage> {
     });
   }
 
+  /// 单个标签 chip：点击选中（计时中禁止切换），长按编辑
   Widget _buildTagChip(TimerTag tag, bool isSelected) {
     final cs = Theme.of(context).colorScheme;
     final color = _parseColor(tag.color);
@@ -740,6 +762,7 @@ class _WorkPageState extends State<WorkPage> {
     );
   }
 
+  /// 「+」按钮：点击添加标签，长按打开标签管理（拖动排序/删除）
   Widget _buildAddTagButton() {
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
@@ -765,6 +788,7 @@ class _WorkPageState extends State<WorkPage> {
 
   // ---------------- 标签管理（长按 + 打开） ----------------
 
+  /// 标签管理弹窗：拖动排序、删除、进入添加
   void _showTagManagerDialog() {
     final cs = Theme.of(context).colorScheme;
     Get.dialog(
@@ -823,7 +847,7 @@ class _WorkPageState extends State<WorkPage> {
   Widget _buildManagerTile(BuildContext context, TimerTag tag, int index) {
     final cs = Theme.of(context).colorScheme;
     final color = _parseColor(tag.color);
-    final canDelete = _ctrl.tags.length > 1;
+    final canDelete = _ctrl.tags.length > 1; // 至少保留一个标签
     return ListTile(
       key: ValueKey(tag.id),
       dense: true,
@@ -874,6 +898,7 @@ class _WorkPageState extends State<WorkPage> {
     );
   }
 
+  /// 标签管理列表中展示的收入模式文案
   String _incomeTypeLabel(TimerTag tag) {
     switch (tag.incomeType) {
       case TimerTag.incomeHourly:
@@ -887,6 +912,7 @@ class _WorkPageState extends State<WorkPage> {
     }
   }
 
+  /// 正计时运行中视图：标签色计时牌 + 暂停/继续 + 结束
   Widget _buildRunningView() {
     final tag = _ctrl.currentTimerTag.value;
     final color = tag != null ? _parseColor(tag.color) : Colors.grey;
@@ -1019,6 +1045,7 @@ class _WorkPageState extends State<WorkPage> {
     );
   }
 
+  /// 正计时待机视图：大圆形开始按钮；打卡进行中时按钮不可点
   Widget _buildIdleView() {
     final tag = _ctrl.currentTimerTag.value;
     final color = tag != null ? _parseColor(tag.color) : Colors.grey;
@@ -1168,6 +1195,7 @@ class _WorkPageState extends State<WorkPage> {
     ));
   }
 
+  /// 标签图标选择器展示顺序（键名对应 IconUtils.tag）
   static const _iconPickerOrder = [
     'work', 'school', 'menu_book', 'code', 'brush',
     'music_note', 'self_improvement', 'fitness_center', 'favorite', 'timer',
@@ -1175,6 +1203,7 @@ class _WorkPageState extends State<WorkPage> {
     'sports_esports', 'savings', 'home', 'groups', 'label',
   ];
 
+  /// 添加标签弹窗：按收入模式校验必填的费率
   void _showAddTagDialog() {
     final nameCtrl = TextEditingController();
     final rateCtrl = TextEditingController();
@@ -1228,6 +1257,7 @@ class _WorkPageState extends State<WorkPage> {
     ));
   }
 
+  /// 编辑标签弹窗：直接修改对象字段后走 StorageService 持久化
   void _showEditTagDialog(TimerTag tag) {
     final nameCtrl = TextEditingController(text: tag.name);
     final rateCtrl = TextEditingController(
@@ -1283,6 +1313,7 @@ class _WorkPageState extends State<WorkPage> {
                 incomeType.value == TimerTag.incomeHourly ? rate : 0;
             tag.fixedSalary =
                 incomeType.value == TimerTag.incomeFixed ? fixed : 0;
+            // 持久化后广播版本号，让标签栏与统计页同步刷新
             StorageService().updateTimerTag(tag);
             _ctrl.notifyTagsChanged();
             Get.back();
@@ -1433,6 +1464,7 @@ class _WorkPageState extends State<WorkPage> {
 
   // ---------------- 工具 ----------------
 
+  /// 解析 `#RRGGBB` 颜色字符串，非法值回退灰色
   Color _parseColor(String hex) {
     try {
       return Color(int.parse(hex.replaceFirst('#', '0xFF')));

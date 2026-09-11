@@ -1,3 +1,11 @@
+// ============================================================
+// 应用入口（lib/main.dart）
+// 职责：初始化存储/主题/应用锁/同步/提醒/自动记账等全局单例，
+//       构建 GetMaterialApp，并监听前后台切换实现回前台自动重锁
+// 关联：StorageService、ThemeController、LockController、SyncController、
+//       ReminderService、AutoBookkeepingService
+// ============================================================
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +22,13 @@ import 'data/services/storage_service.dart';
 import 'modules/lock/lock_controller.dart';
 import 'modules/sync/sync_controller.dart';
 
+/// 应用启动流程（顺序有意义）：
+/// 1. 锁定竖屏 + 透明状态栏；
+/// 2. 初始化中文日期格式与本地存储；
+/// 3. 消费后台引擎（通知监听）在 App 关闭期间写入的自动记账队列；
+/// 4. 注册主题/应用锁/同步控制器；
+/// 5. 恢复每日提醒调度、按开关启动通知监听服务；
+/// 最后 runApp。任何一步失败都不应阻塞启动（关键处已有容错）。
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -49,6 +64,8 @@ void main() async {
   runApp(const GongMoApp());
 }
 
+/// 根组件：用 Obx 监听主题变化构建 MaterialApp，
+/// 并作为 WidgetsBindingObserver 处理前后台生命周期
 class GongMoApp extends StatefulWidget {
   const GongMoApp({super.key});
 
@@ -57,6 +74,7 @@ class GongMoApp extends StatefulWidget {
 }
 
 class _GongMoAppState extends State<GongMoApp> with WidgetsBindingObserver {
+  /// 应用进入后台的时刻；回到前台时用于判断是否超过重锁间隔
   DateTime? _pausedAt;
 
   @override
@@ -71,6 +89,8 @@ class _GongMoAppState extends State<GongMoApp> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  /// 前后台切换：后台记录时间；回前台若超过 LockController 的重锁间隔，
+  /// 且当前不在锁屏/启动页时，跳转到解锁页
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||

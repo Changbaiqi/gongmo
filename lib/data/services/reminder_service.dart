@@ -1,3 +1,10 @@
+// ============================================================
+// 每日记账提醒服务（data/services）
+// 职责：用本地通知在每天固定时间提醒记账（默认 21:00）
+// 关联：StorageService（reminder_* 配置）、tz_setup（时区初始化）、
+//       设置页与 main.dart 启动时确保调度存在
+// ============================================================
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
@@ -33,6 +40,7 @@ class ReminderService {
   String get timeText =>
       '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
+  /// 初始化通知插件与时区数据（幂等）
   Future<void> init() async {
     if (_initialized) return;
     await ensureTimezonesInitialized();

@@ -1,9 +1,17 @@
+// ============================================================
+// 主题控制器（app/theme）
+// 职责：管理深色模式、配色预设、自定义背景图，并持久化到 config.json
+// 关联：main.dart 中 Get.put 后由 GongMoApp 用 Obx 监听重建 MaterialApp；
+//       设置页「外观」分组读写
+// ============================================================
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../data/services/storage_service.dart';
 import 'app_theme.dart';
 
-/// 主题状态管理：深色模式、配色方案、自定义背景
+/// 主题状态：三个响应式字段（mode/preset/backgroundPath）变化后
+/// 会触发 MaterialApp 重建主题；写操作同时落盘 config.json
 class ThemeController extends GetxController {
   final mode = ThemeMode.system.obs;
   final preset = AppThemePreset.green.obs;
@@ -11,8 +19,10 @@ class ThemeController extends GetxController {
 
   StorageService get _storage => StorageService();
 
+  /// 是否设置了自定义背景图（有背景图时 Scaffold 背景半透明）
   bool get hasBackground => backgroundPath.value.isNotEmpty;
 
+  /// 从 config.json 恢复上次的主题选择
   @override
   void onInit() {
     super.onInit();

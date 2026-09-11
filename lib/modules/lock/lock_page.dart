@@ -1,3 +1,10 @@
+// ============================================================
+// lock_page.dart（锁屏模块 · 解锁页）
+// 职责：应用锁的解锁界面——绘制图案验证或使用指纹；解锁成功后返回原页面
+//       或进入主页；拦截返回键避免绕过锁屏。
+// 关联：LockController（校验图案/生物识别、markUnlocked）；由启动分流或
+//       前后台切换时的重锁逻辑进入，路由为 AppRoutes.lock。
+// ============================================================
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -5,7 +12,10 @@ import '../../app/routes/app_routes.dart';
 import '../../core/widgets/pattern_lock.dart';
 import 'lock_controller.dart';
 
-/// 应用解锁页：图案密码或指纹验证
+/// 应用解锁页：图案密码或指纹验证。
+///
+/// 本地状态只有错误提示、指纹忙碌标记与已解锁标记；真正的校验逻辑都在
+/// [LockController]，页面只负责展示与导航。
 class LockPage extends StatefulWidget {
   const LockPage({super.key});
 
@@ -30,6 +40,8 @@ class _LockPageState extends State<LockPage> {
     });
   }
 
+  /// 尝试生物识别解锁：未开启或无进行中任务时才调起；
+  /// 失败时把 [LockController.biometricError] 显示在图案下方（如指纹被锁定）。
   Future<void> _tryBiometric() async {
     if (_unlocked || _biometricBusy) return;
     if (!_ctrl.biometricEnabled.value) return;
@@ -59,6 +71,7 @@ class _LockPageState extends State<LockPage> {
     }
   }
 
+  /// 图案绘制完成后的校验：少于 4 点直接提示；校验通过解锁，失败抖动提示
   Future<void> _onPattern(List<int> pattern) async {
     if (_unlocked) return;
     if (pattern.length < 4) {
@@ -84,7 +97,7 @@ class _LockPageState extends State<LockPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return PopScope(
-      canPop: false,
+      canPop: false, // 禁用返回键/返回手势，防止绕过锁屏
       child: Scaffold(
         body: SafeArea(
           child: Center(

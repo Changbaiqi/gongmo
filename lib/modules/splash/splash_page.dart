@@ -1,3 +1,10 @@
+// ============================================================
+// splash_page.dart（启动模块 · 开屏页）
+// 职责：启动后的第一个页面，播放 logo 缩放淡入/标题上滑/进度条动画，
+//       约 1.8 秒后按“应用锁是否启用”分流到解锁页或主页。
+// 关联：读取 LockController 决定跳转目标，读取 ThemeController 决定是否显示
+//       樱花飘落；路由走 AppRoutes 的 lock / dashboard。
+// ============================================================
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,6 +17,9 @@ import '../../core/widgets/sakura_petals.dart';
 import '../lock/lock_controller.dart';
 
 /// 开屏页：logo 缩放淡入 + 标题上滑淡入 + 底部进度条，结束后进入解锁页或主页
+///
+/// 动画用一个 1.6s 的 AnimationController 驱动，各元素通过 Interval 错开
+/// 时间片；跳转用 [Timer] 独立计时，动画时长与停留时长互不影响。
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
 
@@ -39,6 +49,8 @@ class _SplashPageState extends State<SplashPage>
     super.dispose();
   }
 
+  /// 开屏结束后的分流：启用应用锁且已设置图案才进解锁页，否则直接进主页。
+  /// 用 offAllNamed 清空路由栈，避免用户返回时又看到开屏页。
   void _next() {
     if (!mounted) return;
     final lock = Get.find<LockController>();

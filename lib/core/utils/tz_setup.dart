@@ -1,3 +1,9 @@
+// ============================================================
+// 时区数据库初始化（core/utils）
+// 职责：幂等地初始化 timezone 数据库，并把 tz.local 设为设备当前时区
+// 关联：ReminderService（本地通知定时依赖 tz.local）、时区转换/重叠工具页
+// ============================================================
+
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;

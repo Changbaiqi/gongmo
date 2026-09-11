@@ -1,17 +1,43 @@
+// ============================================================
+// 账目模型（data/models）
+// 职责：一笔收入/支出的数据结构、JSON 序列化
+// 关联：StorageService（按年分片持久化 finance_entries_{年}.json）、
+//       FinanceController（增删改）、StatsController（统计）
+// ============================================================
+
+/// 账目类型；transfer=转账（预留，当前 UI 仅支持收入/支出）
 enum FinanceType { income, expense, transfer }
 
+/// 一条账目。
+///
+/// 与工时记录的关联：计时结算生成收入账目时会回填 [workEntryId]；
+/// 自动记账生成账目时会回填 [notificationSrc]。
 class FinanceEntry {
   final String id;
   FinanceType type;
   double amount;
+
+  /// 分类 id（内置 inc_*/exp_* 或自定义 cus_*）
   String categoryId;
+
+  /// 备注；为空时界面回退显示分类名
   String description;
+
+  /// 关联的工时记录 id（计时结算生成时回填）
   String? workEntryId;
+
+  /// 关联账户 id（字段预留，当前记账表单未使用）
   String? accountId;
+
+  /// 自动记账来源（alipay/wechat/cmb），非空表示「自动」条目
   String? notificationSrc;
+
+  /// 账目发生时间（按此字段归属年月与统计）
   DateTime date;
   DateTime createdAt;
   DateTime updatedAt;
+
+  /// 预留标签列表
   List<String> tags;
 
   FinanceEntry({

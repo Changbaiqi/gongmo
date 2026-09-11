@@ -1,3 +1,10 @@
+// ============================================================
+// 路由表（app/routes）
+// 职责：把 AppRoutes 中的路径映射到具体页面组件
+// 关联：main.dart 的 GetMaterialApp.getPages；所有路由均无 binding，
+//       页面内部自行 Get.put / Get.find 控制器
+// ============================================================
+
 import 'package:get/get.dart';
 import '../../modules/home/home_page.dart';
 import '../../modules/lock/lock_page.dart';
@@ -17,6 +24,7 @@ import '../../modules/sync/sync_page.dart';
 import '../../modules/settings/settings_page.dart';
 import 'app_routes.dart';
 
+/// GetX 路由表：路径 → 页面构建器
 class AppPages {
   static final routes = [
     GetPage(
