@@ -7,6 +7,16 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      export_method:
+        description: "iOS 导出方式"
+        type: choice
+        options:
+          - ad-hoc
+          - release-testing
+          - development
+          - app-store-connect
+        default: ad-hoc
 
 permissions:
   contents: read
@@ -83,6 +93,12 @@ jobs:
     name: iOS App (${{ github.ref_name }})
     runs-on: macos-latest
     timeout-minutes: 90
+    env:
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      EXPORT_METHOD: ${{ inputs.export_method || vars.IOS_EXPORT_METHOD || 'ad-hoc' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -97,22 +113,109 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build iOS (no codesign)
+      - name: Import signing certificate and provisioning profile
+        if: env.BUILD_CERTIFICATE_BASE64 != ''
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/certificate.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          printf '%s' "$BUILD_CERTIFICATE_BASE64" | tr -d '\r\n ' | openssl base64 -d -A -out "$CERTIFICATE_PATH"
+          printf '%s' "$BUILD_PROVISION_PROFILE_BASE64" | tr -d '\r\n ' | openssl base64 -d -A -out "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
+
+          case "$EXPORT_METHOD" in
+            development|debugging) CERT_PATTERN="Development" ;;
+            *) CERT_PATTERN="Distribution" ;;
+          esac
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n "s/.*\"\(.*${CERT_PATTERN}[^\"]*\)\".*/\1/p" | head -n1)
+          if [ -z "$IDENTITY" ]; then
+            echo "未在证书中找到 ${CERT_PATTERN} 类型的签名证书，请检查 BUILD_CERTIFICATE_BASE64" >&2
+            exit 1
+          fi
+
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")
+
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "SIGN_CERT_TYPE=${IDENTITY%%:*}" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+
+      - name: Build signed IPA
+        if: env.BUILD_CERTIFICATE_BASE64 != ''
+        run: |
+          BUNDLE_ID=$(grep -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/Runner.xcodeproj/project.pbxproj | sed 's/.*= //' | grep -v RunnerTests | sort -u | head -n1)
+          if [ -z "$BUNDLE_ID" ]; then
+            echo "无法从 ios/Runner.xcodeproj/project.pbxproj 解析 Bundle ID" >&2
+            exit 1
+          fi
+
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${EXPORT_METHOD}</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>${SIGN_CERT_TYPE}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+            <key>compileBitcode</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+          FLUTTER_XCODE_CODE_SIGN_STYLE=Manual \
+          FLUTTER_XCODE_DEVELOPMENT_TEAM="$TEAM_ID" \
+          FLUTTER_XCODE_PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+          FLUTTER_XCODE_CODE_SIGN_IDENTITY="$SIGN_CERT_TYPE" \
+          flutter build ipa --release --export-options-plist="$RUNNER_TEMP/ExportOptions.plist"
+
+          mkdir -p build/ipa
+          IPA=$(ls build/ios/ipa/*.ipa | head -n1)
+          cp "$IPA" "build/ipa/${APP_NAME}-ios-release.ipa"
+          ls -lh build/ipa/*.ipa
+
+      - name: Build unsigned iOS (no signing secrets configured)
+        if: env.BUILD_CERTIFICATE_BASE64 == ''
         run: flutter build ios --release --no-codesign
 
       - name: Package unsigned IPA
+        if: env.BUILD_CERTIFICATE_BASE64 == ''
         run: |
           mkdir -p build/ipa/Payload
           cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/
           cd build/ipa
-          zip -qry ${{ env.APP_NAME }}-ios-release-unsigned.ipa Payload
+          zip -qry ${APP_NAME}-ios-release-unsigned.ipa Payload
           ls -lh *.ipa
 
-      - name: Upload unsigned IPA
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-ios-release-unsigned.ipa
-          path: build/ipa/${{ env.APP_NAME }}-ios-release-unsigned.ipa
+          name: ${{ env.APP_NAME }}-ios-release.ipa
+          path: build/ipa/*.ipa
           if-no-files-found: error
           retention-days: 30
 
