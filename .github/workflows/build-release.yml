@@ -34,8 +34,11 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: Install Android NDK
-        run: yes | sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "ndk;${{ env.NDK_VERSION }}"
+          accept-android-sdk-licenses: true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
