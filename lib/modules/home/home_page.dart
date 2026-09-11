@@ -6,6 +6,7 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/icon_utils.dart';
 import '../../core/widgets/count_up_text.dart';
 import '../../core/widgets/swipe_action_card.dart';
+import '../../core/widgets/tilt_card.dart';
 import '../../app/routes/app_routes.dart' show AppRoutes;
 import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
@@ -869,7 +870,10 @@ class _HomePageState extends State<HomePage>
       final expense = _dc.monthExpense.value;
       final balance = income - expense;
       final onPrimary = cs.onPrimary;
-      return Container(
+      return TiltCard(
+        borderRadius: 20,
+        shadowColor: cs.primary.withValues(alpha: 0.3),
+        child: Container(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
         // 让子内容也按圆角裁剪，避免底部出现直角/尖角
         clipBehavior: Clip.antiAlias,
@@ -883,13 +887,6 @@ class _HomePageState extends State<HomePage>
             ],
           ),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: cs.primary.withValues(alpha: 0.3),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
-            ),
-          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1167,6 +1164,7 @@ class _HomePageState extends State<HomePage>
                     ),
             ),
           ],
+        ),
         ),
       );
     });

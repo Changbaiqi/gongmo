@@ -1,0 +1,269 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart'
+    show MethodChannel, MissingPluginException;
+import 'package:sensors_plus/sensors_plus.dart';
+
+/// 跟随手机重力/陀螺仪做轻微 3D 倾斜 + 动态光影的卡片包装。
+///
+/// - 加速度计获取设备相对重力的倾斜方向，映射为绕 X/Y 轴旋转并做平滑插值；
+/// - 表面高光带与边缘高光随倾斜滑动/增强，阴影向倾斜反方向偏移，
+///   让 3D 变化更明显；
+/// - 稳定后自动停止 ticker，退到后台停止监听以省电；
+/// - 若运行环境未注册传感器插件，会静默降级为静态光影，不报错。
+class TiltCard extends StatefulWidget {
+  const TiltCard({
+    super.key,
+    required this.child,
+    this.maxAngle = 0.08, // 最大旋转弧度（约 4.6°）
+    this.enabled = true,
+    this.borderRadius = 20,
+    this.shadowColor,
+    this.shine = true,
+  });
+
+  final Widget child;
+  final double maxAngle;
+  final bool enabled;
+  final double borderRadius;
+
+  /// 动态阴影颜色（null 则不绘制阴影）
+  final Color? shadowColor;
+
+  /// 是否绘制随倾斜移动的表面高光 / 边缘高光
+  final bool shine;
+
+  @override
+  State<TiltCard> createState() => _TiltCardState();
+}
+
+class _TiltCardState extends State<TiltCard>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static const _sensorChannel =
+      MethodChannel('dev.fluttercommunity.plus/sensors/method');
+
+  StreamSubscription<AccelerometerEvent>? _sub;
+  late final Ticker _ticker = createTicker(_onTick);
+  final ValueNotifier<Offset> _tilt = ValueNotifier(Offset.zero);
+  Offset _target = Offset.zero;
+
+  bool _listening = false;
+  bool _checkedAvailability = false;
+  bool _sensorAvailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.enabled) _listen();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _sub?.cancel();
+    _ticker.dispose();
+    _tilt.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!widget.enabled) return;
+    if (state == AppLifecycleState.resumed) {
+      _listen();
+    } else {
+      // 退到后台时停止监听传感器并回正，避免耗电
+      _stopListen();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant TiltCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.enabled && !oldWidget.enabled) {
+      _listen();
+    } else if (!widget.enabled && oldWidget.enabled) {
+      _stopListen();
+    }
+  }
+
+  Future<void> _listen() async {
+    if (_listening) return;
+    _listening = true;
+
+    // 先探测插件是否可用，避免在未注册插件的环境里抛出 MissingPluginException
+    if (!_checkedAvailability) {
+      _checkedAvailability = true;
+      try {
+        await _sensorChannel.invokeMethod<void>(
+            'setAccelerationSamplingPeriod', 20000);
+        _sensorAvailable = true;
+      } on MissingPluginException {
+        _sensorAvailable = false;
+      } catch (_) {
+        _sensorAvailable = true;
+      }
+    }
+    if (!_sensorAvailable) {
+      _listening = false;
+      return;
+    }
+
+    try {
+      _sub?.cancel();
+      _sub = accelerometerEventStream().listen(_onData, onError: (_) {});
+    } catch (_) {
+      _sub = null;
+      _listening = false;
+    }
+  }
+
+  void _stopListen() {
+    _sub?.cancel();
+    _sub = null;
+    _listening = false;
+    _target = Offset.zero;
+    if (!_ticker.isActive) _ticker.start();
+  }
+
+  void _onData(AccelerometerEvent e) {
+    // 加速度计静止时反映重力方向：竖屏正持时 y≈9.8、x≈0。
+    // 归一化到 -1..1（±4.5 m/s² 视为最大倾角）
+    const range = 4.5;
+    _target = Offset(
+      (e.x / range).clamp(-1.0, 1.0),
+      (e.y / range).clamp(-1.0, 1.0),
+    );
+    if (!_ticker.isActive) _ticker.start();
+  }
+
+  void _onTick(Duration _) {
+    const k = 0.14; // 平滑系数
+    final cur = _tilt.value;
+    final next = Offset(
+      cur.dx + (_target.dx - cur.dx) * k,
+      cur.dy + (_target.dy - cur.dy) * k,
+    );
+    if ((next - _target).distance < 0.002) {
+      _tilt.value = _target;
+      _ticker.stop(); // 稳定后停止，避免常驻逐帧刷新
+    } else {
+      _tilt.value = next;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Offset>(
+      valueListenable: _tilt,
+      child: widget.child,
+      builder: (context, tilt, child) {
+        final dx = tilt.dx.clamp(-1.0, 1.0);
+        final dy = tilt.dy.clamp(-1.0, 1.0);
+        final mag = tilt.distance.clamp(0.0, 1.0);
+
+        Widget content = child!;
+
+        if (widget.shine) {
+          content = Stack(
+            children: [
+              content,
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: _ShineOverlay(
+                    dx: dx,
+                    dy: dy,
+                    mag: mag,
+                    radius: widget.borderRadius,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        if (dx != 0 || dy != 0) {
+          content = Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0012) // 透视
+              ..rotateY(dx * widget.maxAngle)
+              ..rotateX(-dy * widget.maxAngle),
+            child: content,
+          );
+        }
+
+        final shadow = widget.shadowColor;
+        if (shadow == null) return content;
+
+        // 阴影朝倾斜的反方向偏移、随倾角变大而更散
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.borderRadius),
+            boxShadow: [
+              BoxShadow(
+                color: shadow,
+                offset: Offset(-dx * 10, 6 - dy * 8),
+                blurRadius: 18 + mag * 12,
+              ),
+            ],
+          ),
+          child: content,
+        );
+      },
+    );
+  }
+}
+
+/// 表面高光带 + 边缘高光：随倾斜方向滑动、朝光源一侧更亮
+class _ShineOverlay extends StatelessWidget {
+  const _ShineOverlay({
+    required this.dx,
+    required this.dy,
+    required this.mag,
+    required this.radius,
+  });
+
+  final double dx;
+  final double dy;
+  final double mag;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    // 光源固定在左上：倾斜时高光带随之平移
+    final begin = Alignment(-1 + dx, -1 + dy);
+    final end = Alignment(1 + dx, 1 + dy);
+
+    Color edge(double v) =>
+        Colors.white.withValues(alpha: 0.04 + v.clamp(0.0, 1.0) * 0.22);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          gradient: LinearGradient(
+            begin: begin,
+            end: end,
+            colors: [
+              Colors.white.withValues(alpha: 0.05 + 0.10 * mag),
+              Colors.white.withValues(alpha: 0.0),
+            ],
+            stops: const [0.0, 0.55],
+          ),
+          border: Border(
+            top: BorderSide(color: edge(-dy), width: 1),
+            bottom: BorderSide(color: edge(dy), width: 1),
+            left: BorderSide(color: edge(-dx), width: 1),
+            right: BorderSide(color: edge(dx), width: 1),
+          ),
+        ),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
