@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 /// 主题配色方案
 enum AppThemePreset {
+  sakura('粉白', [Color(0xFFEC5F92), Color(0xFFF9C5DA)]),
   green('墨绿', [Color(0xFF2E7D32), Color(0xFF4CAF50)]),
   mono('黑白', [Color(0xFF212121), Color(0xFF9E9E9E)]),
   tomato('番茄红', [Color(0xFFE53935), Color(0xFFFF8A65)]),
@@ -177,6 +178,27 @@ class AppTheme {
 
   static ColorScheme _schemeFor(AppThemePreset preset, Brightness brightness) {
     switch (preset) {
+      case AppThemePreset.sakura:
+        final base = ColorScheme.fromSeed(
+          seedColor: const Color(0xFFF06292),
+          brightness: brightness,
+        );
+        if (brightness == Brightness.dark) return base;
+        // 浅色：覆写为更鲜艳的樱花少女粉（fromSeed 默认 primary 偏暗沉）
+        return base.copyWith(
+          primary: const Color(0xFFEC5F92),
+          onPrimary: Colors.white,
+          primaryContainer: const Color(0xFFFFD9E7),
+          onPrimaryContainer: const Color(0xFF701A45),
+          secondary: const Color(0xFFF28BB4),
+          onSecondary: Colors.white,
+          secondaryContainer: const Color(0xFFFDE4EF),
+          onSecondaryContainer: const Color(0xFF5D2A40),
+          tertiary: const Color(0xFFF6A589),
+          tertiaryContainer: const Color(0xFFFFE0D4),
+          onTertiaryContainer: const Color(0xFF5C2E1D),
+          surface: const Color(0xFFFFF4F8),
+        );
       case AppThemePreset.green:
         return ColorScheme.fromSeed(
           seedColor: seedColor,
@@ -249,6 +271,8 @@ class AppTheme {
   static Color _cardColorFor(AppThemePreset preset, bool isDark) {
     if (!isDark) return Colors.white;
     switch (preset) {
+      case AppThemePreset.sakura:
+        return const Color(0xFF32262C);
       case AppThemePreset.green:
         return const Color(0xFF171B17);
       case AppThemePreset.mono:
@@ -274,6 +298,9 @@ class AppTheme {
           : Colors.white.withValues(alpha: 0.8);
     }
     switch (preset) {
+      case AppThemePreset.sakura:
+        // 与原生侧 values/colors.xml 的 gm_background 对齐，开屏过渡无色差
+        return isDark ? const Color(0xFF251B21) : const Color(0xFFFFF2F7);
       case AppThemePreset.green:
         return isDark ? const Color(0xFF0E110E) : const Color(0xFFF5F6F3);
       case AppThemePreset.mono:
