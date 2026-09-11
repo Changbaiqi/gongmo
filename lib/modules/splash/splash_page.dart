@@ -14,7 +14,9 @@ import '../../app/routes/app_routes.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
 import '../../core/widgets/sakura_petals.dart';
+import '../../data/services/screenshot_menu_service.dart';
 import '../lock/lock_controller.dart';
+import '../ocr/ocr_confirm_dialog.dart';
 
 /// 开屏页：logo 缩放淡入 + 标题上滑淡入 + 底部进度条，结束后进入解锁页或主页
 ///
@@ -49,15 +51,25 @@ class _SplashPageState extends State<SplashPage>
     super.dispose();
   }
 
-  /// 开屏结束后的分流：启用应用锁且已设置图案才进解锁页，否则直接进主页。
+  /// 开屏结束后的分流：启用应用锁且已设置图案才进解锁页，否则直接进主页
+  /// （若存在待识别的截屏账单，则直接进入确认页）。
   /// 用 offAllNamed 清空路由栈，避免用户返回时又看到开屏页。
-  void _next() {
+  Future<void> _next() async {
     if (!mounted) return;
     final lock = Get.find<LockController>();
     if (lock.enabled.value && lock.hasPattern.value) {
       Get.offAllNamed(AppRoutes.lock);
-    } else {
-      Get.offAllNamed(AppRoutes.dashboard);
+      return;
+    }
+    final capture =
+        await ScreenshotMenuService.instance.consumePendingCapture();
+    if (!mounted) return;
+    Get.offAllNamed(AppRoutes.dashboard);
+    if (capture != null) {
+      // 主页完成首帧后再弹出确认弹窗，避免与路由切换冲突
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        OcrConfirmDialog.show(capture);
+      });
     }
   }
 

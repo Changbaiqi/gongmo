@@ -35,6 +35,36 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- 截屏记账中转页：通知菜单点击后透明过渡，不遮挡待识别页面 -->
+        <activity
+            android:name=".OcrBridgeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.GongMo.Transparent" />
+        <!-- 截屏记账：无障碍服务（Android 11+ 支持 takeScreenshot） -->
+        <service
+            android:name=".GongmoAccessibilityService"
+            android:exported="true"
+            android:label="工墨截屏记账"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+        <!-- 截屏记账：常驻通知菜单前台服务 -->
+        <service
+            android:name=".MenuNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="accounting_menu" />
+        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

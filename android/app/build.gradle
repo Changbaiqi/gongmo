@@ -47,4 +47,6 @@ flutter {
 dependencies {
     // flutter_local_notifications 定时通知需要
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+    // 截屏记账：ML Kit 中文离线文字识别模型（原生直接调用，约 4MB）
+    implementation 'com.google.mlkit:text-recognition-chinese:16.0.1'
 }

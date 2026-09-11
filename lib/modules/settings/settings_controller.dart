@@ -7,8 +7,11 @@
 // ============================================================
 import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import 'package:get/get.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
 import '../../data/services/github_sync_service.dart';
+import '../../data/services/ocr_ai_service.dart';
+import '../../data/services/screenshot_menu_service.dart';
 
 /// 设置页控制器：集中托管设置页所有可变状态与用户操作。
 ///
@@ -36,11 +39,27 @@ class SettingsController extends GetxController {
   /// 分应用开关（alipay/cmb...），未设置的默认开启
   final autoApps = RxMap<String, bool>();
 
+  /// 截屏记账：常驻通知菜单开关 / 无障碍服务状态 / 通知服务运行状态
+  final screenshotMenu = false.obs;
+  final accessibilityEnabled = false.obs;
+  final screenshotMenuRunning = false.obs;
+
+  /// 截屏识别方式：local=本地离线 OCR，ai=AI 视觉模型
+  final ocrEngine = 'local'.obs;
+  final aiApiUrl = ''.obs;
+  final aiApiModel = ''.obs;
+  final aiApiKey = ''.obs;
+
+  /// 长按「记一笔」按钮拍照记账开关（默认开启）
+  final photoBookkeeping = true.obs;
+
   @override
   void onInit() {
     super.onInit();
     loadGithubConfig();
     loadAutoAccounting();
+    loadScreenshotMenu();
+    loadOcrSettings();
   }
 
   /// 从持久化存储恢复 GitHub 配置（进入设置页时调用一次）
@@ -159,4 +178,95 @@ class SettingsController extends GetxController {
       isClearingCloud.value = false;
     }
   }
+
+  // ---------- 截屏记账（常驻通知菜单） ----------
+
+  /// 从持久化配置恢复截屏记账开关与状态
+  Future<void> loadScreenshotMenu() async {
+    screenshotMenu.value = _sync.readConfig('screenshot_menu_enabled') == true;
+    await refreshScreenshotMenuStatus();
+  }
+
+  /// 刷新无障碍服务与通知菜单的实时状态
+  Future<void> refreshScreenshotMenuStatus() async {
+    try {
+      accessibilityEnabled.value =
+          await ScreenshotMenuService.instance.isAccessibilityEnabled();
+      screenshotMenuRunning.value = screenshotMenu.value &&
+          await ScreenshotMenuService.instance.isMenuNotificationRunning();
+    } catch (_) {
+      accessibilityEnabled.value = false;
+      screenshotMenuRunning.value = false;
+    }
+  }
+
+  /// 开关常驻通知菜单；开启时请求通知权限并引导开启无障碍服务
+  Future<void> setScreenshotMenu(bool v) async {
+    screenshotMenu.value = v;
+    await _sync.writeConfig('screenshot_menu_enabled', v);
+    if (v) {
+      try {
+        await Permission.notification.request();
+      } catch (_) {}
+      final ok = await ScreenshotMenuService.instance.startMenuNotification();
+      if (!ok) {
+        Get.snackbar('开启失败', '常驻通知启动失败，请重试');
+      }
+      await refreshScreenshotMenuStatus();
+      if (!accessibilityEnabled.value) {
+        await ScreenshotMenuService.instance.openAccessibilitySettings();
+      }
+    } else {
+      await ScreenshotMenuService.instance.stopMenuNotification();
+      screenshotMenuRunning.value = false;
+    }
+  }
+
+  /// 跳转系统无障碍设置页
+  Future<void> openAccessibilitySettings() =>
+      ScreenshotMenuService.instance.openAccessibilitySettings();
+
+  // ---------- 截屏识别方式（本地 / AI） ----------
+
+  /// 加载识别方式与 AI 接口配置
+  Future<void> loadOcrSettings() async {
+    ocrEngine.value =
+        (_sync.readConfig('ocr_engine') as String?) == 'ai' ? 'ai' : 'local';
+    final url = _sync.readConfig('ai_api_url') as String?;
+    aiApiUrl.value = url?.trim() ?? '';
+    final model = _sync.readConfig('ai_api_model') as String?;
+    aiApiModel.value = model?.trim() ?? '';
+    aiApiKey.value = await OcrAiService.instance.getApiKey();
+    photoBookkeeping.value =
+        _sync.readConfig('photo_bookkeeping_enabled') != false;
+  }
+
+  /// 开关「长按记一笔按钮拍照记账」
+  Future<void> setPhotoBookkeeping(bool v) async {
+    photoBookkeeping.value = v;
+    await _sync.writeConfig('photo_bookkeeping_enabled', v);
+  }
+
+  /// 切换识别方式：local / ai
+  Future<void> setOcrEngine(String engine) async {
+    ocrEngine.value = engine == 'ai' ? 'ai' : 'local';
+    await _sync.writeConfig('ocr_engine', ocrEngine.value);
+  }
+
+  /// 保存 AI 接口配置（地址/模型存 config，Key 存安全存储）
+  Future<void> saveAiConfig({
+    required String url,
+    required String model,
+    required String key,
+  }) async {
+    aiApiUrl.value = url.trim();
+    aiApiModel.value = model.trim();
+    aiApiKey.value = key.trim();
+    await _sync.writeConfig('ai_api_url', aiApiUrl.value);
+    await _sync.writeConfig('ai_api_model', aiApiModel.value);
+    await OcrAiService.instance.saveApiKey(aiApiKey.value);
+  }
+
+  /// AI 识别是否已具备基本配置（地址 + Key）
+  bool get aiConfigured => aiApiUrl.value.isNotEmpty && aiApiKey.value.isNotEmpty;
 }

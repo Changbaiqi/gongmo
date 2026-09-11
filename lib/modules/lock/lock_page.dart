@@ -10,6 +10,8 @@ import 'package:get/get.dart';
 
 import '../../app/routes/app_routes.dart';
 import '../../core/widgets/pattern_lock.dart';
+import '../../data/services/screenshot_menu_service.dart';
+import '../ocr/ocr_confirm_dialog.dart';
 import 'lock_controller.dart';
 
 /// 应用解锁页：图案密码或指纹验证。
@@ -58,16 +60,26 @@ class _LockPageState extends State<LockPage> {
     if (ok) _unlock();
   }
 
-  void _unlock() {
+  Future<void> _unlock() async {
     if (_unlocked) return;
     _unlocked = true;
     _ctrl.markUnlocked();
+    // 解锁前不读取截图，避免锁定期间泄露屏幕内容
+    final capture =
+        await ScreenshotMenuService.instance.consumePendingCapture();
+    if (!mounted) return;
     // 若是从后台返回时弹出的锁屏，直接返回原页面；冷启动则进入主页
     final nav = Navigator.of(context);
     if (nav.canPop()) {
       nav.pop();
     } else {
       Get.offAllNamed(AppRoutes.dashboard);
+    }
+    if (capture != null) {
+      // 页面就绪后再弹出确认弹窗
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        OcrConfirmDialog.show(capture);
+      });
     }
   }
 

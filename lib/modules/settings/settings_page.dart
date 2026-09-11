@@ -49,12 +49,18 @@ class SettingsPage extends StatelessWidget {
           _Entrance(index: 2, child: _buildSectionTitle('自动记账')),
           _Entrance(index: 3, child: _AutoAccountingCard(ctrl: ctrl)),
           const SizedBox(height: 24),
-          _Entrance(index: 4, child: _buildSectionTitle('记账提醒')),
-          _Entrance(index: 5, child: const _ReminderCard()),
+          _Entrance(index: 4, child: _buildSectionTitle('截屏记账')),
+          _Entrance(index: 5, child: _ScreenshotBookkeepingCard(ctrl: ctrl)),
           const SizedBox(height: 24),
-          _Entrance(index: 6, child: _buildSectionTitle('GitHub 连接')),
+          _Entrance(index: 6, child: _buildSectionTitle('识图记账')),
+          _Entrance(index: 7, child: _OcrRecognitionCard(ctrl: ctrl)),
+          const SizedBox(height: 24),
+          _Entrance(index: 8, child: _buildSectionTitle('记账提醒')),
+          _Entrance(index: 9, child: const _ReminderCard()),
+          const SizedBox(height: 24),
+          _Entrance(index: 10, child: _buildSectionTitle('GitHub 连接')),
           _Entrance(
-              index: 7,
+              index: 11,
               child: Card(
             child: Column(
               children: [
@@ -99,12 +105,12 @@ class SettingsPage extends StatelessWidget {
             ),
           )),
           const SizedBox(height: 24),
-          _Entrance(index: 8, child: _buildSectionTitle('安全')),
-          _Entrance(index: 9, child: _buildSecurityCard(context)),
+          _Entrance(index: 12, child: _buildSectionTitle('安全')),
+          _Entrance(index: 13, child: _buildSecurityCard(context)),
           const SizedBox(height: 24),
-          _Entrance(index: 10, child: _buildSectionTitle('关于')),
+          _Entrance(index: 14, child: _buildSectionTitle('关于')),
           _Entrance(
-              index: 11,
+              index: 15,
               child: Card(
             child: Column(
               children: [
@@ -632,6 +638,351 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// 截屏记账卡片：常驻通知菜单开关 + 无障碍服务授权状态
+class _ScreenshotBookkeepingCard extends StatefulWidget {
+  final SettingsController ctrl;
+
+  const _ScreenshotBookkeepingCard({required this.ctrl});
+
+  @override
+  State<_ScreenshotBookkeepingCard> createState() =>
+      _ScreenshotBookkeepingCardState();
+}
+
+class _ScreenshotBookkeepingCardState
+    extends State<_ScreenshotBookkeepingCard> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    widget.ctrl.refreshScreenshotMenuStatus();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统无障碍设置返回后刷新授权状态
+    if (state == AppLifecycleState.resumed) {
+      widget.ctrl.refreshScreenshotMenuStatus();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Column(
+        children: [
+          Obx(() => SwitchListTile(
+                secondary: Icon(
+                  Icons.document_scanner_outlined,
+                  color: cs.primary,
+                ),
+                title: const Text('常驻通知菜单',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  widget.ctrl.screenshotMenu.value
+                      ? (widget.ctrl.screenshotMenuRunning.value
+                          ? '通知栏已常驻，点卡片内「截图记账」按钮截屏'
+                          : '通知服务启动中...')
+                      : '通知栏常驻卡片，内嵌「截图记账」按钮',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+                value: widget.ctrl.screenshotMenu.value,
+                onChanged: (v) => widget.ctrl.setScreenshotMenu(v),
+              )),
+          Obx(() => AnimatedSize(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: !widget.ctrl.screenshotMenu.value
+                    ? const SizedBox(width: double.infinity)
+                    : Column(
+                        children: [
+                          const Divider(height: 1),
+                          ListTile(
+                            dense: true,
+                            leading: Icon(
+                              widget.ctrl.accessibilityEnabled.value
+                                  ? Icons.verified_user_outlined
+                                  : Icons.key_rounded,
+                              size: 20,
+                              color: widget.ctrl.accessibilityEnabled.value
+                                  ? Colors.green.shade600
+                                  : Colors.orange.shade700,
+                            ),
+                            title: const Text('无障碍服务',
+                                style: TextStyle(fontSize: 13.5)),
+                            subtitle: Text(
+                              widget.ctrl.accessibilityEnabled.value
+                                  ? '已开启，可截取当前页面并识别'
+                                  : '未开启，点击前往系统设置开启',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.8)),
+                            ),
+                            trailing:
+                                const Icon(Icons.chevron_right, size: 18),
+                            onTap: () async {
+                              await widget.ctrl.openAccessibilitySettings();
+                              if (mounted) {
+                                widget.ctrl.refreshScreenshotMenuStatus();
+                              }
+                            },
+                          ),
+                          ListTile(
+                            dense: true,
+                            leading: Icon(Icons.tips_and_updates_outlined,
+                                color: cs.primary, size: 20),
+                            title: const Text('使用方式',
+                                style: TextStyle(fontSize: 13.5)),
+                            subtitle: Text(
+                              '在支付宝/微信等账单页下拉通知栏，点通知卡片里的'
+                              '「截图记账」按钮即截屏识别；识别结果以弹窗确认金额后入账'
+                              '（需 Android 11 及以上）',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  height: 1.4,
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.8)),
+                            ),
+                          ),
+                        ],
+                      ),
+              )),
+        ],
+      ),
+    );
+  }
+
+}
+
+/// 识图记账卡片：识别方式（本地离线 / AI 视觉）、AI 接口配置、
+/// 长按「记一笔」拍照记账开关。识别方式对截屏记账与拍照记账共用。
+class _OcrRecognitionCard extends StatelessWidget {
+  final SettingsController ctrl;
+
+  const _OcrRecognitionCard({required this.ctrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome_rounded,
+                    size: 20, color: cs.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('识别方式',
+                          style: TextStyle(
+                              fontSize: 13.5, fontWeight: FontWeight.w600)),
+                      Text('截屏与拍照共用；默认本地离线识别',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant
+                                  .withValues(alpha: 0.8))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Obx(() => Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                        value: 'local',
+                        label: Text('本地识别'),
+                        icon:
+                            Icon(Icons.phone_android_rounded, size: 15)),
+                    ButtonSegment(
+                        value: 'ai',
+                        label: Text('AI 识别'),
+                        icon: Icon(Icons.auto_awesome_rounded, size: 15)),
+                  ],
+                  selected: {ctrl.ocrEngine.value},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (s) => ctrl.setOcrEngine(s.first),
+                ),
+              )),
+          Obx(() {
+            if (ctrl.ocrEngine.value != 'ai') {
+              return const SizedBox(width: double.infinity);
+            }
+            final configured = ctrl.aiConfigured;
+            return ListTile(
+              dense: true,
+              leading: Icon(
+                configured
+                    ? Icons.cloud_done_outlined
+                    : Icons.warning_amber_rounded,
+                size: 20,
+                color: configured
+                    ? Colors.green.shade600
+                    : Colors.orange.shade700,
+              ),
+              title: const Text('AI 接口设置',
+                  style: TextStyle(fontSize: 13.5)),
+              subtitle: Text(
+                configured
+                    ? '${ctrl.aiApiUrl.value}\n模型：${ctrl.aiApiModel.value.isEmpty ? '默认' : ctrl.aiApiModel.value}'
+                    : '未配置 API 地址或 Key，点击填写',
+                style: TextStyle(
+                    fontSize: 11,
+                    height: 1.4,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.chevron_right, size: 18),
+              onTap: () => _showAiConfigDialog(context),
+            );
+          }),
+          const Divider(height: 1),
+          Obx(() => SwitchListTile(
+                secondary: Icon(Icons.add_a_photo_outlined,
+                    size: 20, color: cs.primary),
+                title: const Text('长按拍照记账',
+                    style: TextStyle(fontSize: 13.5)),
+                subtitle: Text(
+                  '长按记账页右下角 + 按钮，拍照识别账单并自动填入',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+                value: ctrl.photoBookkeeping.value,
+                onChanged: (v) => ctrl.setPhotoBookkeeping(v),
+              )),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+            child: Obx(() => Text(
+                  ctrl.ocrEngine.value == 'ai'
+                      ? 'AI 识别会把截图/照片发送到你配置的接口服务用于识别，请注意隐私；'
+                          '识别结果仍需在确认弹窗中核对后保存。'
+                      : '识别在本机通过离线模型完成，不会上传网络；识别结果会先进入确认弹窗，'
+                          '核对无误后再保存为账目。',
+                  style: TextStyle(
+                      fontSize: 11,
+                      height: 1.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+                )),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// AI 接口配置弹窗：地址 / 模型 / API Key
+  void _showAiConfigDialog(BuildContext context) {
+    final urlCtrl = TextEditingController(text: ctrl.aiApiUrl.value);
+    final modelCtrl = TextEditingController(text: ctrl.aiApiModel.value);
+    final keyCtrl = TextEditingController(text: ctrl.aiApiKey.value);
+    final obscure = true.obs;
+
+    Get.dialog(AlertDialog(
+      title: const Text('AI 接口设置'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: urlCtrl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'API 地址',
+                  hintText: 'https://api.deepseek.com（可只填基础地址）',
+                  hintStyle: TextStyle(fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: modelCtrl,
+                decoration: const InputDecoration(
+                  labelText: '模型名',
+                  hintText: '如 deepseek-v4-flash-vision-exp / qwen-vl-plus',
+                  hintStyle: TextStyle(fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Obx(() => TextField(
+                    controller: keyCtrl,
+                    obscureText: obscure.value,
+                    decoration: InputDecoration(
+                      labelText: 'API Key',
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscure.value
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          size: 18,
+                        ),
+                        onPressed: () => obscure.value = !obscure.value,
+                      ),
+                    ),
+                  )),
+              const SizedBox(height: 10),
+              Text(
+                '支持 OpenAI 兼容的视觉接口（如 DeepSeek、通义千问 VL、智谱 GLM-4V、GPT-4o 等）。'
+                '地址可只填基础域名，会自动补全 /v1/chat/completions；'
+                'Key 仅保存在本机安全存储中。',
+                style: TextStyle(
+                    fontSize: 11,
+                    height: 1.5,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant
+                        .withValues(alpha: 0.75)),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: Get.back, child: const Text('取消')),
+        ElevatedButton(
+          onPressed: () async {
+            final url = urlCtrl.text.trim();
+            if (url.isNotEmpty &&
+                !url.startsWith('http://') &&
+                !url.startsWith('https://')) {
+              Get.snackbar('提示', 'API 地址需以 http:// 或 https:// 开头');
+              return;
+            }
+            await ctrl.saveAiConfig(
+              url: url,
+              model: modelCtrl.text,
+              key: keyCtrl.text,
+            );
+            Get.back();
+            Get.snackbar('已保存', 'AI 接口配置已更新');
+          },
+          child: const Text('保存'),
+        ),
+      ],
+    ));
   }
 }
 

@@ -18,8 +18,10 @@ import 'app/theme/app_theme.dart';
 import 'app/theme/theme_controller.dart';
 import 'data/services/auto_bookkeeping_service.dart';
 import 'data/services/reminder_service.dart';
+import 'data/services/screenshot_menu_service.dart';
 import 'data/services/storage_service.dart';
 import 'modules/lock/lock_controller.dart';
+import 'modules/ocr/ocr_confirm_dialog.dart';
 import 'modules/sync/sync_controller.dart';
 
 /// 应用启动流程（顺序有意义）：
@@ -60,6 +62,12 @@ void main() async {
     }
   } catch (_) {}
   AutoBookkeepingService.instance.startIfNeeded(); // 若开关开启则启动监听服务
+  // 截屏记账：开关开启时恢复常驻通知菜单
+  if (storage.getConfig('screenshot_menu_enabled') == true) {
+    try {
+      await ScreenshotMenuService.instance.startMenuNotification();
+    } catch (_) {}
+  }
 
   runApp(const GongMoApp());
 }
@@ -81,6 +89,22 @@ class _GongMoAppState extends State<GongMoApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 截屏记账：原生截屏完成（MainActivity onNewIntent）时进入识别确认页
+    ScreenshotMenuService.instance.setCaptureReadyHandler(_openPendingCapture);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingCapture());
+  }
+
+  /// 读取并打开待识别的截图（冷启动与前台回调共用）。
+  /// 启动页与解锁页由页面自身处理，避免在锁屏前泄露截图内容。
+  Future<void> _openPendingCapture() async {
+    final route = Get.currentRoute;
+    if (route == AppRoutes.splash || route == AppRoutes.lock) {
+      return; // 启动页/解锁页会自行处理待处理截图
+    }
+    if (OcrConfirmDialog.isShowing) return;
+    final capture = await ScreenshotMenuService.instance.consumePendingCapture();
+    if (capture == null) return;
+    OcrConfirmDialog.show(capture);
   }
 
   @override

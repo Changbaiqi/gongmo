@@ -248,32 +248,81 @@ class _ShineOverlay extends StatelessWidget {
     final begin = Alignment(-1 + dx, -1 + dy);
     final end = Alignment(1 + dx, 1 + dy);
 
-    Color edge(double v) =>
-        Colors.white.withValues(alpha: 0.04 + v.clamp(0.0, 1.0) * 0.22);
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius),
-          gradient: LinearGradient(
-            begin: begin,
-            end: end,
-            colors: [
-              Colors.white.withValues(alpha: 0.05 + 0.10 * mag),
-              Colors.white.withValues(alpha: 0.0),
-            ],
-            stops: const [0.0, 0.55],
+      child: CustomPaint(
+        // 四边亮度各不相同，BoxDecoration 的 border 不允许与 borderRadius
+        // 同时使用（会触发 "borderRadius can only be given on borders with
+        // uniform colors" 断言），因此改为按倾斜方向绘制渐变描边
+        foregroundPainter:
+            _ShineEdgePainter(dx: dx, dy: dy, radius: radius),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: begin,
+              end: end,
+              colors: [
+                Colors.white.withValues(alpha: 0.05 + 0.10 * mag),
+                Colors.white.withValues(alpha: 0.0),
+              ],
+              stops: const [0.0, 0.55],
+            ),
           ),
-          border: Border(
-            top: BorderSide(color: edge(-dy), width: 1),
-            bottom: BorderSide(color: edge(dy), width: 1),
-            left: BorderSide(color: edge(-dx), width: 1),
-            right: BorderSide(color: edge(dx), width: 1),
-          ),
+          child: const SizedBox.expand(),
         ),
-        child: const SizedBox.expand(),
       ),
     );
   }
+}
+
+/// 边缘高光描边：用沿倾斜方向的线性渐变模拟原四边差异亮度
+class _ShineEdgePainter extends CustomPainter {
+  _ShineEdgePainter({
+    required this.dx,
+    required this.dy,
+    required this.radius,
+  });
+
+  final double dx;
+  final double dy;
+  final double radius;
+
+  static const _base = 0.04;
+  static const _maxExtra = 0.22;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final rect = (Offset.zero & size).deflate(0.5);
+    final dxn = dx.clamp(-1.0, 1.0);
+    final dyn = dy.clamp(-1.0, 1.0);
+    // 左上 / 右下两个角对应的边缘亮度（与原来的四边取色一致）
+    final startAlpha = _base +
+        ((-dxn).clamp(0.0, 1.0) + (-dyn).clamp(0.0, 1.0)) / 2 * _maxExtra;
+    final endAlpha = _base +
+        (dxn.clamp(0.0, 1.0) + dyn.clamp(0.0, 1.0)) / 2 * _maxExtra;
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..shader = LinearGradient(
+        begin: Alignment(-1 + dxn, -1 + dyn),
+        end: Alignment(1 + dxn, 1 + dyn),
+        colors: [
+          Colors.white.withValues(alpha: startAlpha),
+          Colors.white.withValues(alpha: endAlpha),
+        ],
+      ).createShader(rect);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(radius - 0.5)),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ShineEdgePainter oldDelegate) =>
+      oldDelegate.dx != dx ||
+      oldDelegate.dy != dy ||
+      oldDelegate.radius != radius;
 }
