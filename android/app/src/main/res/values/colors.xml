@@ -1,23 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 启动图标底板：樱花粉 -->
+    <!-- 启动图标底板（由 flutter_launcher_icons.yaml 生成时使用） -->
     <color name="ic_launcher_background">#FAD5E4</color>
-
-    <!-- ===== 粉白主题（工墨） ===== -->
-    <!-- 主背景：樱花粉白 -->
-    <color name="gm_background">#FFF2F7</color>
-
-    <!-- 开屏渐变：自上而下的樱花牛奶渐变 -->
-    <color name="gm_splash_top">#FFF8FB</color>
-    <color name="gm_splash_center">#FDEAF2</color>
-    <color name="gm_splash_bottom">#FAD5E6</color>
-
-    <!-- API 23 以下的系统栏：白色图标可读的蔷薇粉 -->
-    <color name="gm_bar_fallback">#EE7FAC</color>
-
-    <!-- 蔷薇粉强调色系列 -->
-    <color name="gm_rose_300">#F6B3D0</color>
-    <color name="gm_rose_400">#F08AB4</color>
-    <color name="gm_rose_500">#EC5F92</color>
-    <color name="gm_rose_600">#D14478</color>
 </resources>

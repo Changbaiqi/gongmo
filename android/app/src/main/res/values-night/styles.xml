@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 粉白主题 · 夜间：暖调深玫瑰灰（颜色经 values-night/colors.xml 自动切换，系统栏保持白色图标） -->
-    <style name="GmBaseTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:colorBackground">@color/gm_background</item>
-        <item name="android:statusBarColor">@color/gm_bar_fallback</item>
-        <item name="android:navigationBarColor">@color/gm_bar_fallback</item>
-    </style>
-
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is on -->
-    <style name="LaunchTheme" parent="GmBaseTheme">
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
@@ -19,7 +12,7 @@
          running.
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
-    <style name="NormalTheme" parent="GmBaseTheme">
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
 </resources>

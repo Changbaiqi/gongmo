@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Modify this file to customize your launch splash screen -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 粉白底（API 21 以下回退，纯色） -->
-    <item android:drawable="@color/gm_background" />
+    <item android:drawable="@android:color/white" />
 
     <!-- 开屏 logo -->
     <item>
