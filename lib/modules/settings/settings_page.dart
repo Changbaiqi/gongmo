@@ -956,6 +956,34 @@ class _OcrRecognitionCard extends StatelessWidget {
                         .onSurfaceVariant
                         .withValues(alpha: 0.75)),
               ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        size: 16, color: Colors.orange.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '记账类软件数据为个人敏感数据，推荐接口使用官方接口。'
+                        '若使用非官方的中转站接口会有泄露个人信息风险，请谨慎使用。',
+                        style: TextStyle(
+                            fontSize: 11,
+                            height: 1.5,
+                            color: Colors.orange.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),

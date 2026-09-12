@@ -580,7 +580,7 @@ class _OcrConfirmDialogState extends State<OcrConfirmDialog> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '识别结果由本地模型生成，请核对后保存；截图仅在本机处理，不会上传。',
+                  '识别结果由模型生成，请核对后保存；',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 10.5,
