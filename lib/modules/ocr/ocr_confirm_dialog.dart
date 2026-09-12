@@ -145,12 +145,12 @@ class _OcrConfirmDialogState extends State<OcrConfirmDialog> {
     }
 
     try {
-      final text =
-          await OcrBookkeepingService.instance.recognizeImage(capture.path!);
+      final ocr =
+          await OcrBookkeepingService.instance.recognize(capture.path!);
       if (!mounted) return;
-      final parsed = OcrBillParser.parse(text);
+      final parsed = OcrBillParser.parseOcr(ocr);
       setState(() {
-        _rawText = text;
+        _rawText = ocr.text;
         _recognizing = false;
         _engineLabel = '本地识别';
         _ocrError = aiFallback.isEmpty ? null : aiFallback;
