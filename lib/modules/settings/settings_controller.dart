@@ -220,6 +220,8 @@ class SettingsController extends GetxController {
       await ScreenshotMenuService.instance.stopMenuNotification();
       screenshotMenuRunning.value = false;
     }
+    // 菜单常驻状态变化后，同步自动记账监听的前台通知（避免重复常驻通知）
+    await AutoBookkeepingService.instance.refreshForegroundMode();
   }
 
   /// 跳转系统无障碍设置页
