@@ -23,11 +23,31 @@ import androidx.core.app.ServiceCompat
 class MenuNotificationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** 巡检：部分机型（如 MIUI）允许划掉常驻通知，被划掉后立即重新贴出 */
+    private val keepAlive = object : Runnable {
+        override fun run() {
+            if (!running) return
+            try {
+                val nm = getSystemService(NotificationManager::class.java)
+                val alive = nm.activeNotifications?.any { it.id == NOTIFICATION_ID } == true
+                if (!alive) {
+                    nm.notify(NOTIFICATION_ID, buildNotification())
+                }
+            } catch (_: Exception) {
+            }
+            handler.postDelayed(this, 3000)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         createChannel()
         startForegroundCompat(buildNotification())
         running = true
+        handler.removeCallbacks(keepAlive)
+        handler.postDelayed(keepAlive, 3000)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -49,6 +69,7 @@ class MenuNotificationService : Service() {
 
     override fun onDestroy() {
         running = false
+        handler.removeCallbacks(keepAlive)
         super.onDestroy()
     }
 

@@ -417,9 +417,17 @@ class GithubSyncService {
     }
 
     if (changed) {
-      await _putFile(repo, token, _attachmentManifest,
-          json.encode({'files': manifest}), const {},
-          'GongMo attachments manifest');
+      // 注意：更新已存在的清单文件必须带上其 sha，否则 GitHub 会拒绝写入
+      final shas = await _remoteShas(repo, token);
+      final manifestSha = shas[_attachmentManifest];
+      await _putFile(
+        repo,
+        token,
+        _attachmentManifest,
+        json.encode({'files': manifest}),
+        {if (manifestSha != null) _attachmentManifest: manifestSha},
+        'GongMo attachments manifest',
+      );
     }
   }
 
@@ -457,6 +465,23 @@ class GithubSyncService {
       } catch (_) {
         // 单个附件下载失败不影响其它文件
       }
+    }
+  }
+
+  /// 下载单个附件（打开失败时兜底重试）
+  Future<bool> downloadAttachment(String relative) async {
+    try {
+      final repo = await getRepoUrl();
+      final token = await getToken();
+      if (repo.isEmpty || token.isEmpty) return false;
+      final bytes = await _getFileBytes(repo, token, 'attachments/$relative');
+      if (bytes == null) return false;
+      final f = File(AttachmentService.instance.absolutePathSync(relative));
+      await f.parent.create(recursive: true);
+      await f.writeAsBytes(bytes);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

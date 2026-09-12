@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../data/services/attachment_service.dart';
+import '../../../data/services/github_sync_service.dart';
 
 /// 打开附件：
 /// - 图片 / 文本：应用内预览页
@@ -12,8 +13,13 @@ import '../../../data/services/attachment_service.dart';
 Future<void> openAttachment(String relativePath) async {
   final svc = AttachmentService.instance;
   if (!svc.exists(relativePath)) {
-    Get.snackbar('打开失败', '附件文件不存在（可能已被清理）');
-    return;
+    // 可能是云端已备份但本地未下载：尝试重新拉取一次
+    final fetched =
+        await GithubSyncService.instance.downloadAttachment(relativePath);
+    if (!fetched || !svc.exists(relativePath)) {
+      Get.snackbar('打开失败', '附件文件不存在（可能已被清理或尚未同步到本机）');
+      return;
+    }
   }
   if (svc.canPreviewInline(relativePath)) {
     Get.to(() => AttachmentViewerPage(relativePath: relativePath));

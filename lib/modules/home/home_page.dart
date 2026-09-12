@@ -33,6 +33,7 @@ import '../work/work_page.dart';
 import '../finance/finance_controller.dart';
 import '../finance/widgets/attachment_editor.dart';
 import '../finance/widgets/category_manager.dart';
+import '../finance/widgets/finance_detail_dialog.dart';
 import '../stats/stats_view.dart';
 
 /// 应用主界面（路由 `/`）：承载记账与时钟两大模块的顶层容器。
@@ -1603,6 +1604,8 @@ class _HomePageState extends State<HomePage>
           margin: EdgeInsets.zero,
           child: ListTile(
             dense: true,
+            // 点击查看详情（只读，小票样式弹窗）
+            onTap: () => showFinanceDetailDialog(context, fc, entry),
             leading: Container(
               width: 38,
               height: 38,
