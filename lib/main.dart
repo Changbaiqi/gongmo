@@ -17,11 +17,13 @@ import 'app/routes/app_routes.dart';
 import 'app/theme/app_theme.dart';
 import 'app/theme/theme_controller.dart';
 import 'data/services/auto_bookkeeping_service.dart';
+import 'data/services/attachment_service.dart';
 import 'data/services/reminder_service.dart';
 import 'data/services/screenshot_menu_service.dart';
 import 'data/services/storage_service.dart';
 import 'modules/lock/lock_controller.dart';
 import 'modules/ocr/ocr_confirm_dialog.dart';
+import 'modules/ocr/photo_bookkeeping.dart';
 import 'modules/sync/sync_controller.dart';
 
 /// 应用启动流程（顺序有意义）：
@@ -50,6 +52,8 @@ void main() async {
   await storage.init();
   // 启动时处理自动记账队列（后台引擎在 App 关闭期间捕获的收支）
   await AutoBookkeepingService.instance.processQueue();
+  // 附件目录初始化（相对路径 → 绝对路径需要根目录已就绪）
+  await AttachmentService.instance.init();
   Get.put(ThemeController());
   final lock = Get.put(LockController(), permanent: true); // 应用锁（图案/指纹）
   await lock.init();
@@ -91,7 +95,20 @@ class _GongMoAppState extends State<GongMoApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // 截屏记账：原生截屏完成（MainActivity onNewIntent）时进入识别确认页
     ScreenshotMenuService.instance.setCaptureReadyHandler(_openPendingCapture);
+    // 常驻通知菜单按钮（如「拍照记账」）触发的动作
+    ScreenshotMenuService.instance.setMenuActionHandler(runMenuAction);
     WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingCapture());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingMenuAction());
+  }
+
+  /// 读取并执行待处理的常驻通知菜单动作（冷启动与前台回调共用）
+  Future<void> _openPendingMenuAction() async {
+    final route = Get.currentRoute;
+    if (route == AppRoutes.splash || route == AppRoutes.lock) {
+      return; // 启动页/解锁页会自行处理
+    }
+    final action = await ScreenshotMenuService.instance.consumeMenuAction();
+    runMenuAction(action);
   }
 
   /// 读取并打开待识别的截图（冷启动与前台回调共用）。

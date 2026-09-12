@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 附件（图片/PDF/文本）通过 FileProvider 以 content:// 交给系统应用打开 -->
+<paths>
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+    <external-files-path name="ext_files" path="." />
+    <external-cache-path name="ext_cache" path="." />
+</paths>

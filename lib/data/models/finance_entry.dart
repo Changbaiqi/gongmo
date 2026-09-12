@@ -40,6 +40,9 @@ class FinanceEntry {
   /// 预留标签列表
   List<String> tags;
 
+  /// 附件文件路径列表（图片/PDF 等，存放于应用私有目录）
+  List<String> attachmentPaths;
+
   FinanceEntry({
     required this.id,
     required this.type,
@@ -53,10 +56,12 @@ class FinanceEntry {
     DateTime? createdAt,
     DateTime? updatedAt,
     List<String>? tags,
+    List<String>? attachmentPaths,
   })  : date = date ?? DateTime.now(),
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
-        tags = tags ?? [];
+        tags = tags ?? [],
+        attachmentPaths = attachmentPaths ?? [];
 
   factory FinanceEntry.fromJson(Map<String, dynamic> json) {
     return FinanceEntry(
@@ -72,6 +77,8 @@ class FinanceEntry {
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
+      attachmentPaths:
+          (json['attachmentPaths'] as List<dynamic>?)?.cast<String>() ?? [],
     );
   }
 
@@ -89,6 +96,7 @@ class FinanceEntry {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'tags': tags,
+      'attachmentPaths': attachmentPaths,
     };
   }
 
@@ -102,6 +110,7 @@ class FinanceEntry {
     String? notificationSrc,
     DateTime? date,
     List<String>? tags,
+    List<String>? attachmentPaths,
   }) {
     return FinanceEntry(
       id: id,
@@ -116,6 +125,7 @@ class FinanceEntry {
       createdAt: createdAt,
       updatedAt: DateTime.now(),
       tags: tags ?? this.tags,
+      attachmentPaths: attachmentPaths ?? this.attachmentPaths,
     );
   }
 }

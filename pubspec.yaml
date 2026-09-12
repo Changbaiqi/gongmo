@@ -38,6 +38,7 @@ dependencies:
   path_provider: ^2.1.0
   flutter_secure_storage: ^9.0.0
   image_picker: ^1.2.3
+  file_picker: ^8.1.0
   http: ^1.6.0
   wakelock_plus: ^1.5.2
   url_launcher: ^6.3.2

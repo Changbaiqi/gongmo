@@ -13,6 +13,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '../../core/constants/app_constants.dart';
+import 'attachment_service.dart';
 import 'storage_service.dart';
 
 /// 同步过程中的业务异常，message 可直接展示给用户
@@ -249,6 +250,8 @@ class GithubSyncService {
     if (newIndexSha != null) {
       await _storage.setConfig('last_remote_sha', newIndexSha);
     }
+    // 附件（图片/PDF 等）随数据一起备份
+    await _pushAttachments(repo, token);
   }
 
   /// 拉取并合并所有年份分片，返回与 restoreAllData 对应的数据结构
@@ -301,6 +304,9 @@ class GithubSyncService {
       }
     }
 
+    // 附件：先把本地缺失的云端附件拉下来，保证合并后引用有效
+    await _pullAttachments(repo, token);
+
     return {
       'workEntries': work,
       'financeEntries': finance,
@@ -348,8 +354,174 @@ class GithubSyncService {
   }
 
   /// 统一发送请求：30 秒超时，网络错误转为可展示的中文业务异常
-  Future<http.Response> _send(Future<http.Response> Function() request) async {
+  // ---------- 附件（图片 / PDF 等）备份与恢复 ----------
+
+  static const _attachmentManifest = 'attachments.json';
+
+  /// 上传本地附件（增量：大小+mtime 未变则跳过），并清理云端无引用的文件
+  Future<void> _pushAttachments(String repo, String token) async {
+    final svc = AttachmentService.instance;
+    // 本地引用到的附件：相对路径 -> 文件
+    final local = <String, File>{};
+    for (final e in _storage.financeEntries) {
+      for (final rel in e.attachmentPaths) {
+        if (local.containsKey(rel)) continue;
+        final f = File(svc.absolutePathSync(rel));
+        if (await f.exists()) local[rel] = f;
+      }
+    }
+
+    final manifest = await _loadAttachmentManifest(repo, token);
+    var changed = false;
+
+    for (final entry in local.entries) {
+      final rel = entry.key;
+      final f = entry.value;
+      try {
+        final size = await f.length();
+        final mtime = (await f.lastModified()).millisecondsSinceEpoch;
+        final prev = manifest[rel];
+        if (prev != null &&
+            prev['size'] == size &&
+            prev['mtime'] == mtime &&
+            prev['sha'] is String) {
+          continue; // 未变化
+        }
+        final bytes = await f.readAsBytes();
+        final prevSha = prev?['sha'];
+        final sha = await _putBytes(
+          repo,
+          token,
+          'attachments/$rel',
+          bytes,
+          {
+            if (prevSha is String) 'attachments/$rel': prevSha,
+          },
+          'GongMo attachment ${svc.displayName(rel)}',
+        );
+        manifest[rel] = {'sha': sha, 'size': size, 'mtime': mtime};
+        changed = true;
+      } catch (_) {
+        // 单个附件上传失败（如过大/网络）不影响整体同步，下次重试
+      }
+    }
+
+    // 云端已不再被引用的附件：删除
+    for (final rel in manifest.keys.toList()) {
+      if (local.containsKey(rel)) continue;
+      final sha = manifest[rel]?['sha'];
+      await _deleteFile(
+          repo, token, 'attachments/$rel', sha is String ? sha : null);
+      manifest.remove(rel);
+      changed = true;
+    }
+
+    if (changed) {
+      await _putFile(repo, token, _attachmentManifest,
+          json.encode({'files': manifest}), const {},
+          'GongMo attachments manifest');
+    }
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _loadAttachmentManifest(
+      String repo, String token) async {
+    final raw = await _getFile(repo, token, _attachmentManifest);
+    if (raw == null) return {};
     try {
+      final data = json.decode(raw);
+      final files = data is Map ? data['files'] : null;
+      if (files is Map) {
+        return {
+          for (final e in files.entries)
+            if (e.value is Map)
+              '${e.key}': Map<String, dynamic>.from(e.value as Map),
+        };
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  /// 下载云端附件到本地（仅下载本地缺失的文件）
+  Future<void> _pullAttachments(String repo, String token) async {
+    final manifest = await _loadAttachmentManifest(repo, token);
+    if (manifest.isEmpty) return;
+    final svc = AttachmentService.instance;
+    for (final rel in manifest.keys) {
+      try {
+        final f = File(svc.absolutePathSync(rel));
+        if (await f.exists()) continue;
+        final bytes = await _getFileBytes(repo, token, 'attachments/$rel');
+        if (bytes == null) continue;
+        await f.parent.create(recursive: true);
+        await f.writeAsBytes(bytes);
+      } catch (_) {
+        // 单个附件下载失败不影响其它文件
+      }
+    }
+  }
+
+  /// 上传二进制文件（base64 直传，不做二次编码）
+  Future<String?> _putBytes(String repo, String token, String name,
+      List<int> bytes, Map<String, String> shas, String commitMsg) async {
+    final res = await _send(() => http.put(
+          _fileUri(repo, name),
+          headers: _headers(token),
+          body: json.encode({
+            'message': commitMsg,
+            'content': base64Encode(bytes),
+            if (shas[name] != null) 'sha': shas[name],
+          }),
+        ));
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw _errorFor(res.statusCode, res.body);
+    }
+    try {
+      final body = json.decode(res.body);
+      if (body is Map && body['content'] is Map) {
+        return (body['content'] as Map)['sha'] as String?;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 读取二进制文件内容：内容 API 对 >1MB 文件不返回 content，需用 download_url
+  Future<List<int>?> _getFileBytes(
+      String repo, String token, String name) async {
+    final res = await _send(
+        () => http.get(_fileUri(repo, name), headers: _headers(token)));
+    if (res.statusCode == 404) return null;
+    if (res.statusCode != 200) throw _errorFor(res.statusCode, res.body);
+    final body = json.decode(res.body);
+    if (body is! Map<String, dynamic>) return null;
+    final content = body['content'];
+    if (content is String && content.isNotEmpty) {
+      return base64Decode(content.replaceAll('\n', ''));
+    }
+    final url = body['download_url'];
+    if (url is String && url.isNotEmpty) {
+      final raw =
+          await _send(() => http.get(Uri.parse(url), headers: _headers(token)));
+      if (raw.statusCode == 200) return raw.bodyBytes;
+    }
+    return null;
+  }
+
+  Future<void> _deleteFile(
+      String repo, String token, String name, String? sha) async {
+    if (sha == null) return;
+    try {
+      await _send(() => http.delete(
+            _fileUri(repo, name),
+            headers: _headers(token),
+            body: json.encode({
+              'message': 'GongMo delete attachment',
+              'sha': sha,
+            }),
+          ));
+    } catch (_) {}
+  }
+
+  Future<http.Response> _send(Future<http.Response> Function() request) async {    try {
       return await request().timeout(const Duration(seconds: 30));
     } on SocketException {
       throw GithubSyncException('网络连接失败，请检查网络后重试');

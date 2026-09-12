@@ -90,6 +90,16 @@
                <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- 附件打开：FileProvider 提供 content:// URI 交给系统应用 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- 本地通知：定时提醒的投递与开机后重新调度 -->
         <receiver android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />

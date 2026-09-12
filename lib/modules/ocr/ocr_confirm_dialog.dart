@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/utils/date_utils.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/repositories/finance_repository.dart';
+import '../../data/services/attachment_service.dart';
 import '../../data/services/ocr_ai_service.dart';
 import '../../data/services/ocr_bill_parser.dart';
 import '../../data/services/ocr_bookkeeping_service.dart';
@@ -14,6 +15,7 @@ import '../../data/services/screenshot_menu_service.dart';
 import '../../data/services/storage_service.dart';
 import '../dashboard/dashboard_controller.dart';
 import '../finance/finance_controller.dart';
+import '../finance/widgets/attachment_editor.dart';
 import '../finance/widgets/category_manager.dart';
 
 /// 截屏记账确认弹窗：
@@ -65,6 +67,11 @@ class _OcrConfirmDialogState extends State<OcrConfirmDialog> {
   String _categoryId = '';
   DateTime _date = DateTime.now();
 
+  /// 账目 id 与附件（提前生成 id，附件按该 id 存放）
+  final String _entryId = const Uuid().v4();
+  final List<String> _attachments = [];
+  bool _saved = false;
+
   /// 本次识别所用引擎（用于标题旁展示）
   String _engineLabel = '本地识别';
 
@@ -113,6 +120,9 @@ class _OcrConfirmDialogState extends State<OcrConfirmDialog> {
     }
 
     setState(() => _imagePath = capture.path);
+
+    // 拍照/截屏的图片默认挂到附件（用户可在附件区自行删除）
+    await _attachCaptureImage(capture.path!);
 
     // 识别方式：AI（已启用时）→ 失败自动回退本地离线识别
     var aiFallback = '';
@@ -223,9 +233,31 @@ class _OcrConfirmDialogState extends State<OcrConfirmDialog> {
     });
   }
 
+  /// 把拍照/截屏的图片复制到附件目录并加入附件列表
+  Future<void> _attachCaptureImage(String srcPath) async {
+    try {
+      final svc = AttachmentService.instance;
+      final root = await svc.rootDirectory();
+      final dir = Directory('${root.path}/$_entryId');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final dot = srcPath.lastIndexOf('.');
+      final ext = dot >= 0 ? srcPath.substring(dot) : '.jpg';
+      final name = 'capture_${DateTime.now().millisecondsSinceEpoch}$ext';
+      await File(srcPath).copy('${dir.path}/$name');
+      if (!mounted) return;
+      setState(() => _attachments.add('$_entryId/$name'));
+    } catch (_) {
+      // 附加失败不阻塞识别流程
+    }
+  }
+
   Future<void> _cleanup() async {
     if (_cleaned) return;
     _cleaned = true;
+    // 未保存时清理已选附件，避免留下无用文件
+    if (!_saved && _attachments.isNotEmpty) {
+      await AttachmentService.instance.deleteAllFor(_entryId);
+    }
     final path = _imagePath;
     if (path != null) {
       try {
@@ -250,14 +282,16 @@ class _OcrConfirmDialogState extends State<OcrConfirmDialog> {
     setState(() => _saving = true);
     try {
       final entry = FinanceEntry(
-        id: const Uuid().v4(),
+        id: _entryId,
         type: _type,
         amount: amount,
         categoryId: _categoryId,
         description: _descCtrl.text.trim(),
         date: _date,
         notificationSrc: 'screenshot',
+        attachmentPaths: List.of(_attachments),
       );
+      _saved = true;
       _financeRepo.save(entry);
       // 先刷新页面数据（即使随后切回原应用，回来时数据也是新的）
       try {
@@ -524,7 +558,14 @@ class _OcrConfirmDialogState extends State<OcrConfirmDialog> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: 4),
+                AttachmentEditor(
+                  entryId: _entryId,
+                  onChanged: (list) => _attachments
+                    ..clear()
+                    ..addAll(list),
+                ),
+                const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: _saving ? null : _save,
                   icon: _saving

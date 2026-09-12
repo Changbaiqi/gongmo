@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import '../../data/repositories/finance_repository.dart';
+import '../../data/services/attachment_service.dart';
 import '../../data/services/storage_service.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/models/category.dart';
@@ -56,14 +57,17 @@ class FinanceController extends GetxController {
     required String categoryId,
     String description = '',
     DateTime? date,
+    String? id,
+    List<String> attachmentPaths = const [],
   }) {
     final entry = FinanceEntry(
-      id: _uuid.v4(),
+      id: id ?? _uuid.v4(),
       type: type,
       amount: amount,
       categoryId: categoryId,
       description: description,
       date: date ?? DateTime.now(),
+      attachmentPaths: List.of(attachmentPaths),
     );
     _financeRepo.save(entry);
     loadEntries();
@@ -75,6 +79,8 @@ class FinanceController extends GetxController {
   /// 删除账目（仓储层写删除墓碑，供多设备合并时防止记录被恢复），随后刷新汇总。
   void deleteEntry(String id) {
     _financeRepo.delete(id);
+    // 附件目录随之删除（异步，不阻塞界面）
+    AttachmentService.instance.deleteAllFor(id);
     loadEntries();
     try {
       Get.find<DashboardController>(tag: 'dashboard').refreshData();

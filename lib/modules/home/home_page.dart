@@ -13,7 +13,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/icon_utils.dart';
 import '../../core/widgets/count_up_text.dart';
@@ -23,14 +23,15 @@ import '../../app/routes/app_routes.dart' show AppRoutes;
 import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
 import '../../data/models/work_entry.dart';
-import '../../data/services/screenshot_menu_service.dart';
+import '../../data/services/attachment_service.dart';
 import '../../data/services/storage_service.dart';
 import '../dashboard/dashboard_controller.dart';
-import '../ocr/ocr_confirm_dialog.dart';
+import '../ocr/photo_bookkeeping.dart';
 import '../sync/sync_controller.dart';
 import '../work/work_controller.dart';
 import '../work/work_page.dart';
 import '../finance/finance_controller.dart';
+import '../finance/widgets/attachment_editor.dart';
 import '../finance/widgets/category_manager.dart';
 import '../stats/stats_view.dart';
 
@@ -1704,6 +1705,7 @@ class _HomePageState extends State<HomePage>
     final isExpense = (entry.type == FinanceType.expense).obs;
     final selectedCatId = entry.categoryId.obs;
     final entryTime = entry.date.obs;
+    final attachments = List<String>.of(entry.attachmentPaths);
 
     Get.bottomSheet(
       Container(
@@ -1799,6 +1801,14 @@ class _HomePageState extends State<HomePage>
                 ),
                 const SizedBox(height: 12),
                 _entryTimeRow(entryTime),
+                const SizedBox(height: 12),
+                AttachmentEditor(
+                  entryId: entry.id,
+                  initialPaths: entry.attachmentPaths,
+                  onChanged: (list) => attachments
+                    ..clear()
+                    ..addAll(list),
+                ),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -1806,7 +1816,7 @@ class _HomePageState extends State<HomePage>
                     onPressed: () {
                       final amount = double.tryParse(amountCtrl.text);
                       if (amount == null || amount <= 0) {
-                        Get.snackbar('提示', '请输入有效金额');
+                        Get.snackbar('提示', '请输入有效的金额');
                         return;
                       }
                       entry.amount = amount;
@@ -1816,6 +1826,10 @@ class _HomePageState extends State<HomePage>
                       entry.categoryId = selectedCatId.value;
                       entry.description = noteCtrl.text;
                       entry.date = entryTime.value;
+                      // 附件：过滤掉已被删除的文件后保存
+                      entry.attachmentPaths = attachments
+                          .where((p) => AttachmentService.instance.exists(p))
+                          .toList();
                       entry.updatedAt = DateTime.now();
                       fc.saveEntry(entry);
                       _dc.refreshData();
@@ -1941,27 +1955,8 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// 长按 + 按钮：拍照识别账单（识别方式与截屏记账共用，默认本地离线）
-  Future<void> _capturePhotoBookkeeping() async {
-    if (StorageService().getConfig('photo_bookkeeping_enabled') == false) {
-      Get.snackbar('未开启', '可在「设置 → 识图记账」中开启长按拍照记账');
-      return;
-    }
-    HapticFeedback.mediumImpact();
-    try {
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1920,
-        imageQuality: 85,
-      );
-      if (picked == null) return;
-      OcrConfirmDialog.show(
-        PendingCapture(path: picked.path, fromCamera: true),
-      );
-    } catch (_) {
-      Get.snackbar('打开相机失败', '请稍后重试');
-    }
-  }
+  /// 长按 + 按钮：拍照识别账单（与常驻通知的「拍照记账」按钮共用）
+  Future<void> _capturePhotoBookkeeping() => startPhotoBookkeeping();
 
   /// 快速记账底部表单：金额/收支 pill/分类网格/备注/时间；
   /// 保存调用 FinanceController.addEntry 并刷新 Dashboard。
@@ -1973,6 +1968,10 @@ class _HomePageState extends State<HomePage>
     final isExpense = true.obs;
     final selectedCatId = ''.obs;
     final entryTime = DateTime.now().obs;
+    // 预生成账目 id：附件按该 id 存放，取消时一并清理
+    final entryId = const Uuid().v4();
+    final attachments = <String>[];
+    var saved = false;
 
     Get.bottomSheet(
       Container(
@@ -2068,6 +2067,13 @@ class _HomePageState extends State<HomePage>
                 ),
                 const SizedBox(height: 12),
                 _entryTimeRow(entryTime),
+                const SizedBox(height: 12),
+                AttachmentEditor(
+                  entryId: entryId,
+                  onChanged: (list) => attachments
+                    ..clear()
+                    ..addAll(list),
+                ),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -2075,9 +2081,10 @@ class _HomePageState extends State<HomePage>
                     onPressed: () {
                       final amount = double.tryParse(amountCtrl.text);
                       if (amount == null || amount <= 0) {
-                        Get.snackbar('提示', '请输入有效金额');
+                        Get.snackbar('提示', '请输入有效的金额');
                         return;
                       }
+                      saved = true;
                       fc.addEntry(
                         type: isExpense.value
                             ? FinanceType.expense
@@ -2086,6 +2093,8 @@ class _HomePageState extends State<HomePage>
                         categoryId: selectedCatId.value,
                         description: noteCtrl.text,
                         date: entryTime.value,
+                        id: entryId,
+                        attachmentPaths: List.of(attachments),
                       );
                       _dc.refreshData();
                       Get.back();
@@ -2100,10 +2109,14 @@ class _HomePageState extends State<HomePage>
       ),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-    );
+    ).whenComplete(() {
+      // 未保存时清理已选附件，避免留下无用文件
+      if (!saved && attachments.isNotEmpty) {
+        AttachmentService.instance.deleteAllFor(entryId);
+      }
+    });
   }
 
-  // 支出/收入切换胶囊（快速记账与编辑表单共用）
   Widget _typePill({
     required String label,
     required IconData icon,

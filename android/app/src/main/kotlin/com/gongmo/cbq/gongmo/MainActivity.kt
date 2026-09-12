@@ -18,12 +18,16 @@ class MainActivity : FlutterFragmentActivity() {
     /** 触发截屏时工墨在后台：确认完成后需切回原应用 */
     private var returnToPreviousTask = false
 
+    /** 常驻通知按钮待处理动作（冷启动时由 Dart 侧 consumeMenuAction 取走） */
+    private var pendingMenuAction: String? = null
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         // 冷启动流程：只有截屏中转页会同时带这两个标记
         val fromCapture = intent?.getBooleanExtra(EXTRA_OCR_CAPTURE, false) == true
         returnToPreviousTask = fromCapture &&
             intent?.getBooleanExtra(EXTRA_OCR_RETURN, false) == true
+        pendingMenuAction = intent?.getStringExtra(EXTRA_MENU_ACTION)
     }
 
     override fun onPause() {
@@ -35,11 +39,17 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, settingsChannelName)
             .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "openAppSettings" -> result.success(openAppSettings())
-                    "openBatterySettings" -> result.success(openBatterySettings())
-                    else -> result.notImplemented()
-                }
+                        when (call.method) {
+                            "openAppSettings" -> result.success(openAppSettings())
+                            "openBatterySettings" -> result.success(openBatterySettings())
+                            // 用系统应用打开附件（图片/PDF/文本）
+                            "openAttachment" -> {
+                                val path = call.argument<String>("path")
+                                val mime = call.argument<String>("mime") ?: "*/*"
+                                result.success(openAttachment(path, mime))
+                            }
+                            else -> result.notImplemented()
+                        }
             }
         screenshotChannel =
             MethodChannel(flutterEngine.dartExecutor.binaryMessenger, screenshotChannelName)
@@ -56,6 +66,12 @@ class MainActivity : FlutterFragmentActivity() {
                                 result.success(MenuNotificationService.running)
                             "consumePendingCapture" ->
                                 result.success(ScreenshotStore.consume(this))
+                            // 常驻通知菜单按钮动作（冷启动读取并清空）
+                            "consumeMenuAction" -> {
+                                val action = pendingMenuAction
+                                pendingMenuAction = null
+                                result.success(action)
+                            }
                             "clearPendingCapture" -> {
                                 ScreenshotStore.clear(this)
                                 result.success(null)
@@ -101,6 +117,12 @@ class MainActivity : FlutterFragmentActivity() {
             returnToPreviousTask = intent.getBooleanExtra(EXTRA_OCR_RETURN, false)
             intent.removeExtra(EXTRA_OCR_CAPTURE)
             screenshotChannel?.invokeMethod("onCaptureReady", null)
+        }
+        // 常驻通知按钮（如「拍照记账」）：热启动时直接通知 Flutter 执行
+        intent.getStringExtra(EXTRA_MENU_ACTION)?.let { action ->
+            intent.removeExtra(EXTRA_MENU_ACTION)
+            pendingMenuAction = action
+            screenshotChannel?.invokeMethod("onMenuAction", action)
         }
     }
 
@@ -177,9 +199,33 @@ class MainActivity : FlutterFragmentActivity() {
         return openAppSettings()
     }
 
+    /** 用系统应用打开附件：FileProvider 生成 content:// URI */
+    private fun openAttachment(path: String?, mime: String): Boolean {
+        if (path.isNullOrEmpty()) return false
+        return try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                java.io.File(path)
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     companion object {
         const val EXTRA_OCR_CAPTURE = "com.gongmo.cbq.gongmo.ocr_capture"
         const val EXTRA_OCR_RETURN = "com.gongmo.cbq.gongmo.ocr_return"
+
+        /** 常驻通知菜单按钮动作（值如 photo_bookkeeping） */
+        const val EXTRA_MENU_ACTION = "com.gongmo.cbq.gongmo.menu_action"
 
         /** 最近一次 onPause 时刻（elapsedRealtime），用于判断截屏时应用是否在前台 */
         @Volatile

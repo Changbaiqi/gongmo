@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知按钮底色：半透明灰，深浅色通知背景都可见 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#1A888888" />
+    <corners android:radius="14dp" />
+</shape>

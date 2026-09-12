@@ -89,11 +89,36 @@ class MenuNotificationService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 自定义通知布局：主体内嵌「截图记账」按钮（RemoteViews），
-        // 不再依赖系统通知的 action 按钮（MIUI 等会默认折叠）
+        // 通知内「关闭菜单」：停止常驻服务
+        val stopIntent = Intent(this, MenuNotificationService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPi = PendingIntent.getService(
+            this, 102, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // 通知内「拍照记账」：打开应用并让 Flutter 侧进入拍照识别流程
+        val photoIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
+            putExtra(MainActivity.EXTRA_MENU_ACTION, "photo_bookkeeping")
+        }
+        val photoPi = PendingIntent.getActivity(
+            this, 103, photoIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // 自定义通知布局（有道翻译官快捷菜单风格）：
+        // 仅一行图标按钮并占满内容区，均直接绑定点击事件
         val views = RemoteViews(packageName, R.layout.notification_menu).apply {
             setOnClickPendingIntent(R.id.notify_capture, capturePi)
-            setOnClickPendingIntent(R.id.notify_texts, openPi)
+            setOnClickPendingIntent(R.id.notify_photo, photoPi)
+            setOnClickPendingIntent(R.id.notify_open, openPi)
+            setOnClickPendingIntent(R.id.notify_stop, stopPi)
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -106,32 +131,45 @@ class MenuNotificationService : Service() {
             .setOngoing(true)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            // 默认级别（高于 LOW）：提升在通知栏中的排序，同时不发出提示音
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            // 点信息区打开应用；右侧按钮由 RemoteViews 单独绑定截屏
+            // 点信息区打开应用；按钮点击由 RemoteViews 单独绑定
             .setContentIntent(openPi)
-            .addAction(0, getString(R.string.notification_action_capture), capturePi)
             .build()
     }
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(NotificationManager::class.java)
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "记账菜单",
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "截屏记账快捷菜单"
-            setShowBadge(false)
+        // 已创建的频道无法修改重要性，这里用新频道 ID 提升级别以尽量置顶
+        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "记账菜单",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "截屏记账快捷菜单"
+                setShowBadge(false)
+                setSound(null, null) // 静音，不打扰
+                enableVibration(false)
+            }
+            nm.createNotificationChannel(channel)
         }
-        nm.createNotificationChannel(channel)
+        // 清理旧的低优先级频道
+        try {
+            nm.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+        } catch (_: Exception) {
+        }
     }
 
     companion object {
-        const val CHANNEL_ID = "gongmo_menu"
+        /** 提升重要级别后的新频道（置顶排序） */
+        const val CHANNEL_ID = "gongmo_menu_v2"
+
+        /** 旧频道，创建新频道时清理 */
+        const val LEGACY_CHANNEL_ID = "gongmo_menu"
         const val NOTIFICATION_ID = 2001
         const val ACTION_STOP = "com.gongmo.cbq.gongmo.MENU_STOP"
 

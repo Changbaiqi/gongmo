@@ -1,65 +1,130 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 截屏记账常驻通知的自定义布局：左侧信息区（点击打开应用），右侧内嵌「截图记账」按钮 -->
+<!-- 「截屏记账」常驻通知布局：仅一行图标按钮并占满内容区。
+     不放标题/说明文字，避免通知高度超限被系统裁断显示不全 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/notify_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:paddingTop="6dp"
-    android:paddingBottom="6dp"
-    android:paddingStart="4dp"
-    android:paddingEnd="2dp">
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
 
     <LinearLayout
-        android:id="@+id/notify_texts"
+        android:id="@+id/notify_capture"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginEnd="8dp"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/notify_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/notification_menu_title"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:maxLines="1"
-            android:ellipsize="end" />
-
-        <TextView
-            android:id="@+id/notify_subtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/notification_menu_subtitle"
-            android:textColor="?android:attr/textColorSecondary"
-            android:textSize="11.5sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/notify_capture"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:background="@drawable/notification_button_bg"
+        android:background="@drawable/notification_action_bg"
         android:clickable="true"
         android:focusable="true"
-        android:fontFamily="sans-serif-medium"
         android:gravity="center"
-        android:letterSpacing="0.05"
-        android:minHeight="38dp"
-        android:paddingStart="18dp"
-        android:paddingEnd="18dp"
+        android:orientation="vertical"
         android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        android:text="@string/notification_action_capture"
-        android:textAllCaps="false"
-        android:textColor="#FFFFFFFF"
-        android:textSize="13sp"
-        android:textStyle="bold" />
+        android:paddingBottom="8dp">
+
+        <ImageView
+            android:layout_width="19dp"
+            android:layout_height="19dp"
+            android:contentDescription="@string/notification_action_capture"
+            android:src="@drawable/ic_notify_capture" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:maxLines="1"
+            android:text="@string/notification_action_capture"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/notify_photo"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_weight="1"
+        android:background="@drawable/notification_action_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <ImageView
+            android:layout_width="19dp"
+            android:layout_height="19dp"
+            android:contentDescription="@string/notification_action_photo"
+            android:src="@drawable/ic_notify_photo" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:maxLines="1"
+            android:text="@string/notification_action_photo"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/notify_open"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_weight="1"
+        android:background="@drawable/notification_action_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <ImageView
+            android:layout_width="19dp"
+            android:layout_height="19dp"
+            android:contentDescription="@string/notification_action_open"
+            android:src="@drawable/ic_notify_open" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:maxLines="1"
+            android:text="@string/notification_action_open"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/notify_stop"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_weight="1"
+        android:background="@drawable/notification_action_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <ImageView
+            android:layout_width="19dp"
+            android:layout_height="19dp"
+            android:contentDescription="@string/notification_action_stop"
+            android:src="@drawable/ic_notify_close" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:maxLines="1"
+            android:text="@string/notification_action_stop"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="11sp" />
+    </LinearLayout>
 </LinearLayout>

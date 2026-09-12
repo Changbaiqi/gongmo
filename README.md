@@ -62,6 +62,7 @@
 - flutter_notification_listener / flutter_local_notifications（自动记账监听 / 每日提醒）
 - ML Kit 中文离线 OCR（原生集成，截屏账单识别，不上传）
 - http（GitHub Contents API、汇率 API）、local_auth、crypto、sensors_plus 等
+- Deepseek、GLM等一些列AI工具进行辅助开发
 
 ## 快速开始
 

@@ -16,6 +16,7 @@ import '../../app/theme/theme_controller.dart';
 import '../../core/widgets/sakura_petals.dart';
 import '../../data/services/screenshot_menu_service.dart';
 import '../lock/lock_controller.dart';
+import '../ocr/photo_bookkeeping.dart';
 import '../ocr/ocr_confirm_dialog.dart';
 
 /// 开屏页：logo 缩放淡入 + 标题上滑淡入 + 底部进度条，结束后进入解锁页或主页
@@ -63,12 +64,19 @@ class _SplashPageState extends State<SplashPage>
     }
     final capture =
         await ScreenshotMenuService.instance.consumePendingCapture();
+    final menuAction =
+        await ScreenshotMenuService.instance.consumeMenuAction();
     if (!mounted) return;
     Get.offAllNamed(AppRoutes.dashboard);
     if (capture != null) {
-      // 主页完成首帧后再弹出确认弹窗，避免与路由切换冲突
+      // 页面就绪后再弹出确认弹窗
       WidgetsBinding.instance.addPostFrameCallback((_) {
         OcrConfirmDialog.show(capture);
+      });
+    }
+    if (menuAction != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        runMenuAction(menuAction);
       });
     }
   }

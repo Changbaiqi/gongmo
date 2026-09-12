@@ -3,7 +3,10 @@
     <string name="app_name">工墨</string>
     <string name="accessibility_service_description">用于「截屏记账」：点击常驻通知的自动记账按钮后，截取当前屏幕并离线识别账单文字，自动生成账目草稿供你确认。不会采集或上传屏幕内容。</string>
     <string name="accessibility_service_summary">截屏识别账单，快速记账</string>
-    <string name="notification_menu_title">工墨截屏记账</string>
-    <string name="notification_menu_subtitle">点右侧按钮截屏识别当前账单页</string>
+    <string name="notification_menu_title">工墨 · 截屏记账</string>
+    <string name="notification_menu_subtitle">点「截图记账」截取当前页面并识别</string>
     <string name="notification_action_capture">截图记账</string>
+    <string name="notification_action_photo">拍照记账</string>
+    <string name="notification_action_open">打开工墨</string>
+    <string name="notification_action_stop">关闭菜单</string>
 </resources>

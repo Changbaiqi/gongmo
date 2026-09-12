@@ -37,15 +37,42 @@ class ScreenshotMenuService {
       MethodChannel('com.gongmo.cbq.gongmo/screenshot');
 
   void Function()? _captureReadyHandler;
+  void Function(String? action)? _menuActionHandler;
+  bool _handlerInstalled = false;
 
-  /// 原生截屏完成（MainActivity onNewIntent）时回调，用于前台直接打开确认页
-  void setCaptureReadyHandler(void Function()? handler) {
-    _captureReadyHandler = handler;
+  /// 原生 → Flutter 的统一回调入口（截屏完成 / 通知菜单动作）
+  void _installHandler() {
+    if (_handlerInstalled) return;
+    _handlerInstalled = true;
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onCaptureReady') {
-        _captureReadyHandler?.call();
+      switch (call.method) {
+        case 'onCaptureReady':
+          _captureReadyHandler?.call();
+        case 'onMenuAction':
+          _menuActionHandler?.call(call.arguments as String?);
       }
     });
+  }
+
+  /// 原生截屏完成（MainActivity onNewIntent）时回调
+  void setCaptureReadyHandler(void Function()? handler) {
+    _captureReadyHandler = handler;
+    _installHandler();
+  }
+
+  /// 常驻通知菜单按钮动作回调（如 photo_bookkeeping）
+  void setMenuActionHandler(void Function(String? action)? handler) {
+    _menuActionHandler = handler;
+    _installHandler();
+  }
+
+  /// 读取并清空待处理的菜单动作（App 冷启动时使用）
+  Future<String?> consumeMenuAction() async {
+    try {
+      return await _channel.invokeMethod<String>('consumeMenuAction');
+    } catch (_) {
+      return null;
+    }
   }
 
   /// 无障碍服务是否已在系统设置中开启
