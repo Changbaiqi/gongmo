@@ -1085,7 +1085,9 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                                     ? Icons.currency_yuan_rounded
                                     : app.key == 'wechat'
                                         ? Icons.wechat
-                                        : Icons.account_balance_rounded,
+                                        : app.key == 'meituan'
+                                            ? Icons.delivery_dining_rounded
+                                            : Icons.account_balance_rounded,
                                 color: cs.primary.withValues(alpha: 0.8),
                                 size: 20,
                               ),
@@ -1096,6 +1098,7 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                                 switch (app.key) {
                                   'cmb' => '入账/支出短信通知自动入账',
                                   'wechat' => '微信支付/收款通知自动入账',
+                                  'meituan' => '美团支付/月付/退款通知自动入账',
                                   _ => '支出/收入通知自动入账',
                                 },
                                 style: TextStyle(

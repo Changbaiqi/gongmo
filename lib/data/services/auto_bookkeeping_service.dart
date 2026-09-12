@@ -25,7 +25,14 @@ class SupportedApp {
   final String key;
   final String name;
   final String packageName;
-  const SupportedApp(this.key, this.name, this.packageName);
+
+  /// 同一应用的其它包名（如美团外卖），共用同一个开关
+  final List<String> extraPackages;
+
+  const SupportedApp(this.key, this.name, this.packageName,
+      {this.extraPackages = const []});
+
+  Iterable<String> get allPackages => [packageName, ...extraPackages];
 }
 
 /// 自动记账服务
@@ -45,11 +52,17 @@ class AutoBookkeepingService {
     SupportedApp('alipay', '支付宝', 'com.eg.android.AlipayGphone'),
     SupportedApp('wechat', '微信', 'com.tencent.mm'),
     SupportedApp('cmb', '招商银行', 'com.cmbchina.ccd.pluto.cmbActivity'),
+    SupportedApp(
+      'meituan',
+      '美团',
+      'com.sankuai.meituan',
+      extraPackages: ['com.sankuai.meituan.takeoutnew'],
+    ),
   ];
 
   SupportedApp? _appByPackage(String pkg) {
     for (final a in supportedApps) {
-      if (a.packageName == pkg) return a;
+      if (a.allPackages.contains(pkg)) return a;
     }
     return null;
   }
@@ -214,7 +227,83 @@ class AutoBookkeepingService {
       return null;
     }
     if (appKey == 'wechat') return parseWechat(text);
+    if (appKey == 'meituan') return parseMeituan(text);
     return parseAlipay(text);
+  }
+
+  /// 解析美团支付/月付通知，返回 (类型, 金额, 商户/来源?)
+  ///
+  /// 常见文案：
+  /// - 支出："【美团月付】成功支付11.78元" / "美团支付成功，共12.00元"
+  /// - 退款："【美团】退款5.00元已原路退回"
+  /// - 收款："美团收款到账6.00元"
+  static (FinanceType, double, String?)? parseMeituan(String text) {
+    final t = text.replaceAll(',', '');
+    // 先确认是资金相关通知，避免把营销/订单状态里的数字误记账
+    final payish =
+        RegExp(r'支付|付款|扣款|消费|收款|入账|到账|退款|退回').hasMatch(t);
+    if (!payish) return null;
+
+    // 【】中的来源标签（如 美团月付）作为商户/说明
+    final tag = RegExp(r'【(.{1,12}?)】').firstMatch(t)?.group(1)?.trim();
+
+    // 退款 → 收入
+    if ((t.contains('退款') || t.contains('退回')) && !t.contains('失败')) {
+      for (final re in [
+        RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元的?退款'),
+        RegExp(r'退款[^0-9]{0,8}[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)'),
+        RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元[^0-9]{0,8}(?:原路退回|已退回)'),
+        RegExp(r'[¥￥]\s*([0-9]+(?:\.[0-9]+)?)[^0-9]{0,8}(?:退款|退回)'),
+      ]) {
+        final m = re.firstMatch(t);
+        if (m != null) {
+          final v = double.tryParse(m.group(1) ?? '');
+          if (v != null && v > 0 && v < _maxAmount) {
+            return (FinanceType.income, v, tag);
+          }
+        }
+      }
+      final m = RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元').firstMatch(t);
+      if (m != null) {
+        final v = double.tryParse(m.group(1) ?? '');
+        if (v != null && v > 0 && v < _maxAmount) {
+          return (FinanceType.income, v, tag);
+        }
+      }
+    }
+
+    // 收款/到账 → 收入
+    for (final re in [
+      RegExp(
+          r'(?:已收款|收款到账|收款成功|已到账|入账)\s*[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)'),
+      RegExp(r'收款\s*([0-9]+(?:\.[0-9]+)?)\s*元'),
+    ]) {
+      final m = re.firstMatch(t);
+      if (m != null) {
+        final v = double.tryParse(m.group(1) ?? '');
+        if (v != null && v > 0 && v < _maxAmount) {
+          return (FinanceType.income, v, tag);
+        }
+      }
+    }
+
+    // 支出
+    for (final re in [
+      RegExp(
+          r'(?:成功支付|支付成功|已支付|付款成功|已付款|扣款成功|已扣款)\s*[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?'),
+      RegExp(
+          r'(?:支付|付款|扣款|消费|实付|合计|共计|总计)\s*[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元'),
+      RegExp(r'[¥￥]\s*([0-9]+(?:\.[0-9]+)?)'),
+    ]) {
+      final m = re.firstMatch(t);
+      if (m != null) {
+        final v = double.tryParse(m.group(1) ?? '');
+        if (v != null && v > 0 && v < _maxAmount) {
+          return (FinanceType.expense, v, tag);
+        }
+      }
+    }
+    return null;
   }
 
   /// 解析微信支付/收款通知，返回 (类型, 金额, 商户名?)

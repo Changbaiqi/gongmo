@@ -139,4 +139,46 @@ void main() {
     expect(r!.$1, FinanceType.income);
     expect(r.$2, 24.81);
   });
+
+  test('解析美团月付支付通知', () {
+    final r = AutoBookkeepingService.parseMeituan('【美团月付】成功支付11.78元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 11.78);
+    expect(r.$3, '美团月付');
+  });
+
+  test('解析美团支付成功文案（合计）', () {
+    final r = AutoBookkeepingService.parseMeituan('美团支付成功，合计12.00元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 12.0);
+  });
+
+  test('解析美团退款通知', () {
+    final r = AutoBookkeepingService.parseMeituan('【美团】退款5.00元已原路退回');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 5.0);
+  });
+
+  test('解析美团收款到账通知', () {
+    final r = AutoBookkeepingService.parseMeituan('美团收款到账6.00元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 6.0);
+  });
+
+  test('美团营销/订单文本不误记账', () {
+    expect(AutoBookkeepingService.parseMeituan('您有1个红包即将过期'), isNull);
+    expect(AutoBookkeepingService.parseMeituan('您的订单预计30分钟送达'), isNull);
+  });
+
+  test('parseNotification 分发美团', () {
+    final r = AutoBookkeepingService.parseNotification(
+        'meituan', '【美团月付】成功支付11.78元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 11.78);
+  });
 }

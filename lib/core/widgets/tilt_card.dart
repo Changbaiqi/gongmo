@@ -209,15 +209,16 @@ class _TiltCardState extends State<TiltCard>
         final shadow = widget.shadowColor;
         if (shadow == null) return content;
 
-        // 阴影朝倾斜的反方向偏移、随倾角变大而更散
+        // 阴影朝倾斜反方向轻微偏移；幅度收敛，避免滚动时因手机微倾
+        // 导致阴影忽大忽亮（看起来像发光）
         return Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(widget.borderRadius),
             boxShadow: [
               BoxShadow(
                 color: shadow,
-                offset: Offset(-dx * 10, 6 - dy * 8),
-                blurRadius: 18 + mag * 12,
+                offset: Offset(-dx * 4, 5 - dy * 3),
+                blurRadius: 16 + mag * 6,
               ),
             ],
           ),
@@ -262,7 +263,7 @@ class _ShineOverlay extends StatelessWidget {
               begin: begin,
               end: end,
               colors: [
-                Colors.white.withValues(alpha: 0.05 + 0.10 * mag),
+                Colors.white.withValues(alpha: 0.04 + 0.05 * mag),
                 Colors.white.withValues(alpha: 0.0),
               ],
               stops: const [0.0, 0.55],
@@ -288,7 +289,7 @@ class _ShineEdgePainter extends CustomPainter {
   final double radius;
 
   static const _base = 0.04;
-  static const _maxExtra = 0.22;
+  static const _maxExtra = 0.12;
 
   @override
   void paint(Canvas canvas, Size size) {

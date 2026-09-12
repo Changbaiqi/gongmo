@@ -388,32 +388,68 @@ class _HomePageState extends State<HomePage>
                   // 这里固定外层高度，内部用 OverflowBox 保留原尺寸再做 3D 翻折
                   final visibleH = max(0.0, _balanceCardHeight * (1 - t));
                   if (visibleH < 0.5) return const SizedBox.shrink();
+                  // 折叠过程中额外保留一层柔和外阴影（随折叠渐隐）：
+                  // 卡片内容被裁剪时外阴影会被一起裁掉，磨砂卡片会显得突然变亮
+                  final shadowFade = (1 - t / 0.35).clamp(0.0, 1.0);
+                  final projH = _balanceCardHeight *
+                      cos(t * pi / 2) *
+                      (1.0 - 0.06 * t);
                   return LayoutBuilder(
                     builder: (context, cons) {
                       return SizedBox(
                         height: visibleH,
-                        child: ClipRRect(
-                          // 圆角裁剪：折叠过程中也不会在底部露出直角切口
-                          borderRadius: BorderRadius.circular(20),
-                          child: OverflowBox(
-                            alignment: Alignment.topCenter,
-                            minWidth: 0,
-                            maxWidth: cons.maxWidth,
-                            minHeight: 0,
-                            maxHeight: _balanceCardHeight + 160,
-                            child: Opacity(
-                              opacity: (1 - t).clamp(0.0, 1.0),
-                              child: Transform(
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            if (shadowFade > 0)
+                              Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                child: IgnorePointer(
+                                  child: Container(
+                                    height: projH.clamp(
+                                        0.0, _balanceCardHeight),
+                                    decoration: BoxDecoration(
+                                      borderRadius:
+                                          BorderRadius.circular(20),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                              alpha: 0.26 * shadowFade),
+                                          blurRadius: 16,
+                                          offset: const Offset(0, 5),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ClipRRect(
+                              // 圆角裁剪：折叠过程中也不会在底部露出直角切口
+                              borderRadius: BorderRadius.circular(20),
+                              child: OverflowBox(
                                 alignment: Alignment.topCenter,
-                                transform: Matrix4.identity()
-                                  ..setEntry(3, 2, 0.001) // 透视
-                                  ..rotateX(
-                                      t * pi / 2) // 绕顶边向内翻折（视觉收缩）
-                                  ..scale(1.0 - 0.06 * t),
-                                child: _buildBalanceCard(key: _balanceKey),
+                                minWidth: 0,
+                                maxWidth: cons.maxWidth,
+                                minHeight: 0,
+                                maxHeight: _balanceCardHeight + 160,
+                                // 注意：这里不能包 Opacity——它会让卡片与代理阴影
+                                // 分到不同图层，磨砂 BackdropFilter 采样不到阴影，
+                                // 卡片下半部分就会突然变亮
+                                child: Transform(
+                                  alignment: Alignment.topCenter,
+                                  transform: Matrix4.identity()
+                                    ..setEntry(3, 2, 0.001) // 透视
+                                    ..rotateX(
+                                        t * pi / 2) // 绕顶边向内翻折（视觉收缩）
+                                    ..scale(1.0 - 0.06 * t),
+                                  child: _buildBalanceCard(
+                                      key: _balanceKey, showShadow: false),
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       );
                     },
@@ -920,7 +956,7 @@ class _HomePageState extends State<HomePage>
 
   /// 结余卡：毛玻璃渐变 + 倾斜高光，展示本月结余/收支、快捷菜单与预算进度。
   /// key 由外部传入（_balanceKey）用于测量卡片实际高度。
-  Widget _buildBalanceCard({Key? key}) {
+  Widget _buildBalanceCard({Key? key, bool showShadow = true}) {
     final cs = Theme.of(context).colorScheme;
     return Obx(
       key: key,
@@ -931,7 +967,11 @@ class _HomePageState extends State<HomePage>
       final onPrimary = cs.onPrimary;
       return TiltCard(
         borderRadius: 20,
-        shadowColor: cs.primary.withValues(alpha: 0.3),
+        // 折叠时由外层（未被裁剪的）代理阴影负责，卡片自身不再画阴影，
+        // 避免被 ClipRRect 硬切出一条亮边
+        shadowColor: showShadow
+            ? Colors.black.withValues(alpha: 0.26)
+            : null,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: BackdropFilter(
