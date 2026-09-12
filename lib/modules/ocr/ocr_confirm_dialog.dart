@@ -561,6 +561,8 @@ class _OcrConfirmDialogState extends State<OcrConfirmDialog> {
                 const SizedBox(height: 4),
                 AttachmentEditor(
                   entryId: _entryId,
+                  // 传入已挂载的附件（拍照/截屏图片会自动出现在这里）
+                  initialPaths: _attachments,
                   onChanged: (list) => _attachments
                     ..clear()
                     ..addAll(list),

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// 账目附件：图片 / PDF 等文件，存放于应用私有目录。
@@ -86,6 +87,39 @@ class AttachmentService {
       }
     }
     return added;
+  }
+
+  /// 直接拍照并保存为附件，返回新增的相对路径
+  Future<List<String>> captureAndStore(String entryId) async {
+    XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        imageQuality: 85,
+      );
+    } catch (_) {
+      Get.snackbar('拍照失败', '请稍后重试');
+      return [];
+    }
+    if (picked == null) return [];
+    try {
+      final src = File(picked.path);
+      final size = await src.length();
+      if (size > maxFileBytes) {
+        Get.snackbar('文件过大', '照片超过 100MB，无法添加为附件');
+        return [];
+      }
+      final root = await _rootDir();
+      final entryDir = Directory('${root.path}/$entryId');
+      if (!await entryDir.exists()) await entryDir.create(recursive: true);
+      final name = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await src.copy('${entryDir.path}/$name');
+      return ['$entryId/$name'];
+    } catch (_) {
+      Get.snackbar('添加失败', '照片保存失败');
+      return [];
+    }
   }
 
   /// 删除单个附件（相对路径）

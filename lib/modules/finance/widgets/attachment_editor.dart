@@ -48,6 +48,20 @@ class _AttachmentEditorState extends State<AttachmentEditor> {
     if (added.isNotEmpty) widget.onChanged(List.of(_paths));
   }
 
+  /// 直接拍照作为附件
+  Future<void> _capture() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final added =
+        await AttachmentService.instance.captureAndStore(widget.entryId);
+    if (!mounted) return;
+    setState(() {
+      _paths.addAll(added);
+      _busy = false;
+    });
+    if (added.isNotEmpty) widget.onChanged(List.of(_paths));
+  }
+
   Future<void> _remove(String path) async {
     setState(() => _paths.remove(path));
     widget.onChanged(List.of(_paths));
@@ -68,16 +82,35 @@ class _AttachmentEditorState extends State<AttachmentEditor> {
           ),
           const SizedBox(height: 8),
         ],
-        OutlinedButton.icon(
-          onPressed: _busy ? null : _add,
-          icon: _busy
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.attach_file_rounded, size: 16),
-          label: const Text('添加附件（图片 / PDF 等，单个 ≤100MB）'),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _busy ? null : _add,
+                icon: _busy
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.attach_file_rounded, size: 16),
+                label: const Text('添加附件（图片 / PDF 等，单个 ≤100MB）',
+                    style: TextStyle(fontSize: 12.5)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 直接拍照作为附件
+            SizedBox(
+              height: 40,
+              child: OutlinedButton(
+                onPressed: _busy ? null : _capture,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                child: const Icon(Icons.photo_camera_outlined, size: 18),
+              ),
+            ),
+          ],
         ),
       ],
     );
