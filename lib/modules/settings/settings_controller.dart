@@ -198,6 +198,14 @@ class SettingsController extends GetxController {
       accessibilityEnabled.value = false;
       screenshotMenuRunning.value = false;
     }
+    // 通知里的「关闭菜单」按钮会在原生侧直接停掉服务，
+    // 这里把开关同步为关闭并落盘，避免界面与真实状态不一致
+    if (screenshotMenu.value && !screenshotMenuRunning.value) {
+      screenshotMenu.value = false;
+      try {
+        await _sync.writeConfig('screenshot_menu_enabled', false);
+      } catch (_) {}
+    }
   }
 
   /// 开关常驻通知菜单；开启时请求通知权限并引导开启无障碍服务

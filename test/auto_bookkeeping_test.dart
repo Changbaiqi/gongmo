@@ -181,4 +181,12 @@ void main() {
     expect(r!.$1, FinanceType.expense);
     expect(r.$2, 11.78);
   });
+
+  test('解析微信个人收款码到账通知', () {
+    final r =
+        AutoBookkeepingService.parseWechat('[3条]微信支付：个人收款码到账￥5.00');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 5.00);
+  });
 }
