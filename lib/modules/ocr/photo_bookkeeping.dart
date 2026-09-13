@@ -3,16 +3,11 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/services/screenshot_menu_service.dart';
-import '../../data/services/storage_service.dart';
 import 'ocr_confirm_dialog.dart';
 
 /// 拍照识别记账：打开相机拍照后进入 OCR 确认浮层。
-/// 由首页长按 + 号、以及常驻通知的「拍照记账」按钮共用。
+/// 由首页长按 + 号、以及常驻通知的「拍照记账」按钮共用（始终可用）。
 Future<void> startPhotoBookkeeping() async {
-  if (StorageService().getConfig('photo_bookkeeping_enabled') == false) {
-    Get.snackbar('未开启', '可在「设置 → 识图记账」中开启拍照记账');
-    return;
-  }
   HapticFeedback.mediumImpact();
   try {
     final picked = await ImagePicker().pickImage(

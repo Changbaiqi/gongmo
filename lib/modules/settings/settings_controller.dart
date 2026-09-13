@@ -50,9 +50,6 @@ class SettingsController extends GetxController {
   final aiApiModel = ''.obs;
   final aiApiKey = ''.obs;
 
-  /// 长按「记一笔」按钮拍照记账开关（默认开启）
-  final photoBookkeeping = true.obs;
-
   @override
   void onInit() {
     super.onInit();
@@ -247,14 +244,6 @@ class SettingsController extends GetxController {
     final model = _sync.readConfig('ai_api_model') as String?;
     aiApiModel.value = model?.trim() ?? '';
     aiApiKey.value = await OcrAiService.instance.getApiKey();
-    photoBookkeeping.value =
-        _sync.readConfig('photo_bookkeeping_enabled') != false;
-  }
-
-  /// 开关「长按记一笔按钮拍照记账」
-  Future<void> setPhotoBookkeeping(bool v) async {
-    photoBookkeeping.value = v;
-    await _sync.writeConfig('photo_bookkeeping_enabled', v);
   }
 
   /// 切换识别方式：local / ai

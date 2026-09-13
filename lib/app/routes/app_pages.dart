@@ -20,6 +20,7 @@ import '../../modules/work/timezone_converter_page.dart';
 import '../../modules/work/timezone_overlap_page.dart';
 import '../../modules/work/work_page.dart';
 import '../../modules/finance/finance_page.dart';
+import '../../modules/finance/bill_page.dart';
 import '../../modules/sync/sync_page.dart';
 import '../../modules/settings/settings_page.dart';
 import 'app_routes.dart';
@@ -52,6 +53,10 @@ class AppPages {
     GetPage(
       name: AppRoutes.finance,
       page: () => const FinancePage(),
+    ),
+    GetPage(
+      name: AppRoutes.bill,
+      page: () => const BillPage(),
     ),
     GetPage(
       name: AppRoutes.sync,

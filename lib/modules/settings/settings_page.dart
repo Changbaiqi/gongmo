@@ -859,20 +859,18 @@ class _OcrRecognitionCard extends StatelessWidget {
             );
           }),
           const Divider(height: 1),
-          Obx(() => SwitchListTile(
-                secondary: Icon(Icons.add_a_photo_outlined,
-                    size: 20, color: cs.primary),
-                title: const Text('长按拍照记账',
-                    style: TextStyle(fontSize: 13.5)),
-                subtitle: Text(
-                  '长按记账页右下角 + 按钮，拍照识别账单并自动填入',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
-                ),
-                value: ctrl.photoBookkeeping.value,
-                onChanged: (v) => ctrl.setPhotoBookkeeping(v),
-              )),
+          ListTile(
+            leading: Icon(Icons.add_a_photo_outlined,
+                size: 20, color: cs.primary),
+            title: const Text('长按拍照记账',
+                style: TextStyle(fontSize: 13.5)),
+            subtitle: Text(
+              '长按记账页右下角 + 按钮（或通知菜单的「拍照记账」），拍照识别账单并自动填入',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
             child: Obx(() => Text(

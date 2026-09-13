@@ -1065,6 +1065,8 @@ class _HomePageState extends State<HomePage>
                       label,
                       onTap: () {
                         switch (label) {
+                          case '账单':
+                            Get.toNamed(AppRoutes.bill);
                           case '预算':
                             _showBudgetDialog();
                           case '更多':
