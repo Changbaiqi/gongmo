@@ -1087,7 +1087,8 @@ class _HomePageState extends State<HomePage>
     (Icons.more_horiz_rounded, '更多'),
   ];
 
-  /// 结余卡：毛玻璃渐变 + 倾斜高光，展示本月结余/收支、快捷菜单与预算进度。
+  /// 结余卡：透明果冻外壳包裹磨砂内芯（史莱姆式多层卡体），
+  /// 展示本月结余/收支、快捷菜单与预算进度。
   /// key 由外部传入（_balanceKey）用于测量卡片实际高度。
   Widget _buildBalanceCard({Key? key, bool showShadow = true}) {
     final cs = Theme.of(context).colorScheme;
@@ -1099,20 +1100,44 @@ class _HomePageState extends State<HomePage>
       final balance = income - expense;
       final onPrimary = cs.onPrimary;
       return TiltCard(
-        borderRadius: 20,
+        borderRadius: 24,
         // 折叠时由外层（未被裁剪的）代理阴影负责，卡片自身不再画阴影，
         // 避免被 ClipRRect 硬切出一条亮边
         shadowColor: showShadow
             ? Colors.black.withValues(alpha: 0.26)
             : null,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
+        // 史莱姆结构：透明果冻壳（磨砂+淡主色）包裹缩小一圈的内芯，
+        // 壳体四面留出可见间隙（能看穿壳体），最上层再叠壳体光效
+        child: Stack(
+          children: [
+            // ① 果冻外壳：整块磨砂 + 极淡果冻底色（包裹内芯的"透明方块"）
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          cs.primary.withValues(alpha: 0.20),
+                          cs.primary.withValues(alpha: 0.12),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // ② 内芯：原磨砂卡面，四周缩进壳内（悬浮在果冻中）
+            Padding(
+              padding: const EdgeInsets.fromLTRB(7, 7, 7, 10),
+              child: Container(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
         decoration: BoxDecoration(
-          // 磨砂玻璃：半透明主色渐变 + 背景模糊 + 玻璃描边
+          // 内芯：半透明主色渐变 + 玻璃描边（背景模糊由外壳统一处理）
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -1122,9 +1147,9 @@ class _HomePageState extends State<HomePage>
                   .withValues(alpha: 0.58),
             ],
           ),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(17),
           border: Border.all(
-              color: Colors.white.withValues(alpha: 0.22), width: 1),
+              color: Colors.white.withValues(alpha: 0.25), width: 1),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1408,7 +1433,14 @@ class _HomePageState extends State<HomePage>
           ],
         ),
         ),
-        ),
+            ),
+            // ③ 壳体光效：内芯辉光、外缘亮线、顶部透光与流光（不拦截手势）
+            Positioned.fill(
+              child: IgnorePointer(
+                child: _JellyShellFx(radius: 24, inset: 7, bottomInset: 10),
+              ),
+            ),
+          ],
         ),
       );
     });
@@ -2447,4 +2479,215 @@ class _FinanceHeaderDelegate extends SliverPersistentHeaderDelegate {
   // 无法精准判断变化，干脆始终重建以保证筛选状态实时反映
   @override
   bool shouldRebuild(covariant _FinanceHeaderDelegate oldDelegate) => true;
+}
+
+/// 结余卡的「果冻外壳」光效层：史莱姆式包裹感——内芯辉光（光射入果冻的
+/// 散射）、壳体外缘亮线、顶部透光与内芯投影（纯绘制，不拦截手势）。
+class _JellyShellFx extends StatefulWidget {
+  const _JellyShellFx({
+    this.radius = 24,
+    this.inset = 7,
+    this.bottomInset = 10,
+  });
+
+  /// 外壳圆角
+  final double radius;
+
+  /// 内芯与壳壁的间隙（左/上/右）
+  final double inset;
+
+  /// 内芯与壳底的间隙（略大于侧面，暗示内芯悬浮）
+  final double bottomInset;
+
+  @override
+  State<_JellyShellFx> createState() => _JellyShellFxState();
+}
+
+class _JellyShellFxState extends State<_JellyShellFx>
+    with SingleTickerProviderStateMixin {
+  // 一轮 6s 循环：驱动果冻高光的呼吸起伏
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 6000),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) => CustomPaint(
+        painter: _JellyShellFxPainter(
+          radius: widget.radius,
+          inset: widget.inset,
+          bottomInset: widget.bottomInset,
+          phase: _ctrl.value,
+        ),
+      ),
+    );
+  }
+}
+
+/// 外壳光效绘制器：包裹感的来源——内芯辉光 + 壳体轮廓亮线 + 顶部透光
+class _JellyShellFxPainter extends CustomPainter {
+  _JellyShellFxPainter({
+    required this.radius,
+    required this.inset,
+    required this.bottomInset,
+    required this.phase,
+  });
+
+  final double radius;
+  final double inset;
+  final double bottomInset;
+
+  /// 0..1 循环相位：驱动高光呼吸
+  final double phase;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final rect = Offset.zero & size;
+    // 呼吸系数：让高光点轻微起伏，模拟果冻的弹性质感
+    final breath = 0.85 + 0.15 * sin(phase * 2 * pi);
+
+    canvas.save();
+    canvas.clipRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+
+    // 内芯包围盒（壳内缩进一圈）
+    final coreRect = Rect.fromLTRB(
+      inset,
+      inset,
+      size.width - inset,
+      size.height - bottomInset,
+    );
+    final coreRRect = RRect.fromRectAndRadius(
+        coreRect, Radius.circular(radius - inset));
+
+    // ① 内芯辉光：光从内芯射入果冻壳的散射（三层描边由亮到淡向外衰减）
+    final glow = Paint()..style = PaintingStyle.stroke;
+    for (final (w, a) in const [(2.0, 0.20), (5.0, 0.09), (10.0, 0.04)]) {
+      glow
+        ..strokeWidth = w
+        ..color = Colors.white.withValues(alpha: a);
+      canvas.drawRRect(coreRRect, glow);
+    }
+
+    // ② 内芯投影：光从上方来，内芯在壳底留下淡淡影子（强化悬浮感）
+    final floorRect = Rect.fromLTRB(
+      coreRect.left,
+      coreRect.bottom,
+      coreRect.right,
+      size.height - 1.5,
+    );
+    canvas.drawRect(
+      floorRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.10),
+            Colors.black.withValues(alpha: 0.0),
+          ],
+        ).createShader(floorRect),
+    );
+
+    // ③ 壳体环境光：整体透光感
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.12),
+            Colors.white.withValues(alpha: 0.0),
+          ],
+          stops: const [0.0, 0.55],
+        ).createShader(rect),
+    );
+
+    // ④ 顶部透光带：壳的顶面向光，内芯上方的间隙更亮（一眼看出是两层）
+    final topRect = Rect.fromLTWH(0, 0, size.width, inset + 10);
+    canvas.drawRect(
+      topRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: 0.26),
+            Colors.white.withValues(alpha: 0.0),
+          ],
+        ).createShader(topRect),
+    );
+
+    // ⑤ 壳体外缘亮线（史莱姆方块的轮廓）+ 内侧二次高光：双层描边模拟
+    //    壳体前表面转折处受光的两道亮边
+    final edgeRect = rect.deflate(0.75);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(edgeRect, Radius.circular(radius - 0.75)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.45),
+            Colors.white.withValues(alpha: 0.22),
+          ],
+        ).createShader(edgeRect),
+    );
+    final edgeRect2 = rect.deflate(2.8);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(edgeRect2, Radius.circular(radius - 2.8)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.22),
+            Colors.white.withValues(alpha: 0.05),
+          ],
+        ).createShader(edgeRect2),
+    );
+
+    // ⑥ 角部镜面点：壳体上方两角的“高光珠”
+    final corners = [
+      (size.width * 0.10, size.height * 0.06, 6.0, 0.40 * breath),
+      (size.width * 0.90, size.height * 0.05, 4.5, 0.30 * breath),
+    ];
+    for (final (cx, cy, r, a) in corners) {
+      final c = Offset(cx, cy);
+      canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              Colors.white.withValues(alpha: a),
+              Colors.white.withValues(alpha: 0.0),
+            ],
+          ).createShader(Rect.fromCircle(center: c, radius: r)),
+      );
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_JellyShellFxPainter oldDelegate) =>
+      oldDelegate.phase != phase ||
+      oldDelegate.radius != radius ||
+      oldDelegate.inset != inset ||
+      oldDelegate.bottomInset != bottomInset;
 }

@@ -12,11 +12,19 @@ import 'package:flutter/services.dart'
     show MethodChannel, MissingPluginException;
 import 'package:sensors_plus/sensors_plus.dart';
 
+/// 向黑/白方向偏移颜色但保持原 alpha
+/// （Color.lerp 会把 alpha 一起插值，向不透明色靠拢时会抬高不透明度）
+Color _shade(Color c, double t, {bool light = false}) =>
+    Color.lerp(c.withValues(alpha: 1), light ? Colors.white : Colors.black, t)!
+        .withValues(alpha: c.a);
+
 /// 跟随手机重力/陀螺仪做轻微 3D 倾斜 + 动态光影的卡片包装。
 ///
 /// - 加速度计获取设备相对重力的倾斜方向，映射为绕 X/Y 轴旋转并做平滑插值；
 /// - 表面高光带与边缘高光随倾斜滑动/增强，阴影向倾斜反方向偏移，
 ///   让 3D 变化更明显；
+/// - 可选 `thickness`/`thicknessColor`：在正面下方垫一层底衬，
+///   露出底部形成卡片厚度侧壁，并随倾斜轻微视差错位；
 /// - 稳定后自动停止 ticker，退到后台停止监听以省电；
 /// - 若运行环境未注册传感器插件，会静默降级为静态光影，不报错。
 ///
@@ -32,6 +40,8 @@ class TiltCard extends StatefulWidget {
     this.shadowColor,
     this.shine = true,
     this.enableDrag = true,
+    this.thickness = 0,
+    this.thicknessColor,
   });
 
   final Widget child;
@@ -47,6 +57,13 @@ class TiltCard extends StatefulWidget {
 
   /// 是否支持手动横向拖动旋转视角（松手弹回）
   final bool enableDrag;
+
+  /// 卡片厚度（px）：>0 且 [thicknessColor] 非空时，在正面下方垫一层同尺寸
+  /// 底衬，仅底部露出 thickness 像素形成侧壁，随倾斜轻微视差
+  final double thickness;
+
+  /// 厚度侧壁基色（可带透明度做果冻/玻璃侧壁；null 时忽略 [thickness]）
+  final Color? thicknessColor;
 
   @override
   State<TiltCard> createState() => _TiltCardState();
@@ -234,6 +251,49 @@ class _TiltCardState extends State<TiltCard>
                 ),
               ),
             ],
+          );
+        }
+
+        // 银行卡式厚度：正面下方垫一层同尺寸深色底衬（高光层之后包一层，
+        // 保证侧壁不被表面高光带盖住），仅底部 thickness 像素露出形成侧壁；
+        // 随倾斜轻微错位，产生“挤出体”的视差立体感
+        final tc = widget.thicknessColor;
+        if (widget.thickness > 0 && tc != null) {
+          content = Padding(
+            padding: EdgeInsets.only(bottom: widget.thickness),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  bottom: -widget.thickness,
+                  child: Transform.translate(
+                    offset: Offset(dx * 3.0, dy * 3.0),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius:
+                            BorderRadius.circular(widget.borderRadius),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          // 果冻侧壁：保持传入色的透明度只做明暗偏移，
+                          // 主体略深，底缘提亮形成透光反光
+                          colors: [
+                            _shade(tc, 0.10),
+                            _shade(tc, 0.26),
+                            _shade(tc, 0.42, light: true),
+                          ],
+                          stops: const [0.0, 0.86, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                content,
+              ],
+            ),
           );
         }
 
