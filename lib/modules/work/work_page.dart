@@ -20,6 +20,11 @@ import 'widgets/fullscreen_timer_page.dart';
 import 'widgets/work_stats_view.dart';
 import 'work_controller.dart';
 
+// 新手引导高亮目标（由首页在切换到时钟标签时使用）
+final GlobalKey workModePillsKey = GlobalKey();
+final GlobalKey workMoreButtonKey = GlobalKey();
+final GlobalKey workTodayRecordsKey = GlobalKey();
+
 /// 工时主页（StatefulWidget 仅负责页面级时间刷新与 Tab/PageView 状态）
 ///
 /// 业务状态都在 WorkController 中，通过 Obx 响应式重建局部 UI。
@@ -220,6 +225,7 @@ class _WorkPageState extends State<WorkPage> {
     }
 
     return Row(
+      key: workModePillsKey,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         pill('正计时', 0),
@@ -234,6 +240,7 @@ class _WorkPageState extends State<WorkPage> {
   /// 打卡右侧的「更多」入口：跳转到时间工具的更多页
   Widget _buildTimeMoreButton(ColorScheme cs) {
     return GestureDetector(
+      key: workMoreButtonKey,
       behavior: HitTestBehavior.opaque,
       onTap: () {
         HapticFeedback.selectionClick();
@@ -371,6 +378,7 @@ class _WorkPageState extends State<WorkPage> {
     );
 
     return Container(
+      key: workTodayRecordsKey,
       height: 208,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),

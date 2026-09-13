@@ -29,10 +29,11 @@ import '../dashboard/dashboard_controller.dart';
 import '../ocr/photo_bookkeeping.dart';
 import '../sync/sync_controller.dart';
 import '../work/work_controller.dart';
-import '../work/work_page.dart';
+import '../work/work_page.dart' show WorkPage, workModePillsKey, workMoreButtonKey, workTodayRecordsKey;
 import '../finance/finance_controller.dart';
 import '../finance/widgets/attachment_editor.dart';
 import '../finance/widgets/category_manager.dart';
+import '../../core/widgets/spotlight_guide.dart';
 import '../finance/widgets/finance_detail_dialog.dart';
 import '../stats/stats_view.dart';
 
@@ -65,6 +66,12 @@ class _HomePageState extends State<HomePage>
   // 结余卡折叠进度 0..1（由滚动通知驱动）与卡片实测高度（用于折叠计算）
   final ValueNotifier<double> _balanceCollapse = ValueNotifier(0);
   final GlobalKey _balanceKey = GlobalKey();
+
+  // 新手引导高亮目标
+  final GlobalKey _tabToggleKey = GlobalKey();
+  final GlobalKey _listKey = GlobalKey();
+  final GlobalKey _fabKey = GlobalKey();
+  final GlobalKey _clockNavKey = GlobalKey();
   double _balanceCardHeight = 320;
 
   final SyncController _sc = Get.find<SyncController>();
@@ -89,6 +96,68 @@ class _HomePageState extends State<HomePage>
       }
     });
     if (_sc.isSyncing.value) _syncSpin.repeat();
+    // 新用户首次进入时展示交互式新手引导（只显示一次）。
+    // 等路由过渡动画结束、控件位置稳定后再触发，避免高亮框位置偏移
+    _scheduleHomeGuide();
+  }
+
+  Animation<double>? _routeAnim;
+  AnimationStatusListener? _routeListener;
+
+  void _scheduleHomeGuide() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final anim = ModalRoute.of(context)?.animation;
+      if (anim == null || anim.status == AnimationStatus.completed) {
+        _showHomeGuide();
+        return;
+      }
+      _routeAnim = anim;
+      _routeListener = (status) {
+        if (status == AnimationStatus.completed) {
+          _routeAnim?.removeStatusListener(_routeListener!);
+          _routeAnim = null;
+          _routeListener = null;
+          if (mounted) _showHomeGuide();
+        }
+      };
+      anim.addStatusListener(_routeListener!);
+    });
+  }
+
+  void _showHomeGuide() {
+    showSpotlightGuide(
+      context,
+      guideId: 'home',
+      steps: [
+        SpotlightStep(
+          targetKey: _balanceKey,
+          title: '本月结余',
+          text: '这里显示本月收入、支出与结余；卡片下方菜单可打开「账单」「预算」等功能，'
+              '设置预算后进度条会按分类显示用量。',
+        ),
+        SpotlightStep(
+          targetKey: _tabToggleKey,
+          title: '记账 / 统计',
+          text: '「记账」查看账目明细，「统计」查看收支趋势与分类构成。',
+        ),
+        SpotlightStep(
+          targetKey: _listKey,
+          title: '账目列表',
+          text: '点击账目可查看详情（含附件）；左滑卡片可修改或删除；列表按日期分组。',
+        ),
+        SpotlightStep(
+          targetKey: _fabKey,
+          title: '记一笔',
+          text: '点 + 快速记账；长按 + 可直接拍照识别账单，识别结果核对后保存。',
+        ),
+        SpotlightStep(
+          targetKey: _clockNavKey,
+          title: '计时与工具',
+          text: '切到「时钟」可正计时 / 打卡，还有秒表和时区等小工具。',
+        ),
+      ],
+    );
   }
 
   /// 释放本页自建的 Worker、动画与 PageController（GetX 控制器不在此销毁）。
@@ -97,6 +166,9 @@ class _HomePageState extends State<HomePage>
     _syncWorker?.dispose();
     _syncSpin.dispose();
     _pageCtrl.dispose();
+    if (_routeAnim != null && _routeListener != null) {
+      _routeAnim!.removeStatusListener(_routeListener!);
+    }
     super.dispose();
   }
 
@@ -104,6 +176,57 @@ class _HomePageState extends State<HomePage>
   void _onPageChanged(int index) {
     if (index == 0) _financePlayKey++; // 切回记账页触发金额滚动动效
     setState(() => _currentIndex = index);
+    if (index == 1) _showWorkGuideOnce();
+  }
+
+  /// 首次切到「时钟」标签时展示该页的新手引导。
+  /// 等翻页滚动完全停止后再触发，保证高亮框位置准确
+  void _showWorkGuideOnce() {
+    final pos = _pageCtrl.hasClients ? _pageCtrl.position : null;
+    if (pos == null || !pos.isScrollingNotifier.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showWorkGuide();
+      });
+      return;
+    }
+    void listener() {
+      if (!pos.isScrollingNotifier.value) {
+        pos.isScrollingNotifier.removeListener(listener);
+        if (mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showWorkGuide();
+          });
+        }
+      }
+    }
+
+    pos.isScrollingNotifier.addListener(listener);
+  }
+
+  void _showWorkGuide() {
+    showSpotlightGuide(
+      context,
+      guideId: 'work',
+      steps: [
+        SpotlightStep(
+          targetKey: workModePillsKey,
+          title: '正计时 / 打卡 / 更多',
+          text: '在「正计时」「打卡」间切换（也可左右滑动）；点「更多」打开秒表、'
+              '时区重叠图、时区换算等时间小工具。',
+        ),
+        SpotlightStep(
+          targetKey: workTodayRecordsKey,
+          title: '今日记录',
+          text: '当天的计时与打卡会记录在这里；点击右上角日期可切换查看其它日期，'
+              '长按某条记录可以修改。',
+        ),
+        SpotlightStep(
+          targetKey: workMoreButtonKey,
+          title: '时间工具',
+          text: '秒表、时区重叠图、时区显示/转换都在这里。',
+        ),
+      ],
+    );
   }
 
   /// 底部导航点击：先更新高亮，再动画滚动 PageView 到对应页。
@@ -190,6 +313,7 @@ class _HomePageState extends State<HomePage>
           ? GestureDetector(
               onLongPress: _capturePhotoBookkeeping,
               child: FloatingActionButton(
+                key: _fabKey,
                 onPressed: _showQuickFinance,
                 child: const Icon(Icons.add, size: 28),
               ),
@@ -217,10 +341,13 @@ class _HomePageState extends State<HomePage>
                   icon: Icons.account_balance_wallet_rounded,
                   label: '记账',
                 ),
-                _buildNavItem(
-                  index: 1,
-                  icon: Icons.timer_outlined,
-                  label: '时钟',
+                KeyedSubtree(
+                  key: _clockNavKey,
+                  child: _buildNavItem(
+                    index: 1,
+                    icon: Icons.timer_outlined,
+                    label: '时钟',
+                  ),
                 ),
               ],
             ),
@@ -332,6 +459,7 @@ class _HomePageState extends State<HomePage>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
+        key: _tabToggleKey,
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
@@ -478,7 +606,10 @@ class _HomePageState extends State<HomePage>
           // ④ 账目列表：按天分组（底部留 96 给 FAB 与导航栏让位）
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-            sliver: SliverToBoxAdapter(child: _buildFinanceListContent(fc)),
+            sliver: SliverToBoxAdapter(
+                child: KeyedSubtree(
+                    key: _listKey,
+                    child: _buildFinanceListContent(fc))),
           ),
         ],
       ),
