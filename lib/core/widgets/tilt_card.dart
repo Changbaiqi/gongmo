@@ -31,6 +31,7 @@ class TiltCard extends StatefulWidget {
     this.borderRadius = 20,
     this.shadowColor,
     this.shine = true,
+    this.enableDrag = true,
   });
 
   final Widget child;
@@ -44,23 +45,61 @@ class TiltCard extends StatefulWidget {
   /// 是否绘制随倾斜移动的表面高光 / 边缘高光
   final bool shine;
 
+  /// 是否支持手动横向拖动旋转视角（松手弹回）
+  final bool enableDrag;
+
   @override
   State<TiltCard> createState() => _TiltCardState();
 }
 
 class _TiltCardState extends State<TiltCard>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const _sensorChannel =
       MethodChannel('dev.fluttercommunity.plus/sensors/method');
+
+  /// 拖动像素 → 归一化旋转量
+  static const double _dragScale = 1 / 160;
 
   StreamSubscription<AccelerometerEvent>? _sub;
   late final Ticker _ticker = createTicker(_onTick);
   final ValueNotifier<Offset> _tilt = ValueNotifier(Offset.zero);
   Offset _target = Offset.zero;
 
+  /// 手动拖动产生的横向偏转（-1.4..1.4，松手弹回 0）
+  final ValueNotifier<double> _dragX = ValueNotifier(0);
+  late final AnimationController _recoil = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 560),
+  );
+  Animation<double>? _recoilAnim;
+
   bool _listening = false;
   bool _checkedAvailability = false;
   bool _sensorAvailable = false;
+
+  void _onDragUpdate(double dx) {
+    if (_recoil.isAnimating) _recoil.stop();
+    _recoilAnim = null;
+    _dragX.value =
+        (_dragX.value + dx * _dragScale).clamp(-2.2, 2.2);
+  }
+
+  void _onDragEnd() {
+    final start = _dragX.value;
+    if (start == 0) return;
+    _recoilAnim = Tween<double>(begin: start, end: 0).animate(
+      CurvedAnimation(parent: _recoil, curve: Curves.elasticOut),
+    );
+    _recoil
+      ..removeListener(_onRecoilTick)
+      ..addListener(_onRecoilTick)
+      ..forward(from: 0);
+  }
+
+  void _onRecoilTick() {
+    final a = _recoilAnim;
+    if (a != null) _dragX.value = a.value;
+  }
 
   @override
   void initState() {
@@ -75,6 +114,8 @@ class _TiltCardState extends State<TiltCard>
     _sub?.cancel();
     _ticker.dispose();
     _tilt.dispose();
+    _recoil.dispose();
+    _dragX.dispose();
     super.dispose();
   }
 
@@ -167,13 +208,14 @@ class _TiltCardState extends State<TiltCard>
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<Offset>(
-      valueListenable: _tilt,
+    final body = AnimatedBuilder(
+      animation: Listenable.merge([_tilt, _dragX]),
       child: widget.child,
-      builder: (context, tilt, child) {
-        final dx = tilt.dx.clamp(-1.0, 1.0);
-        final dy = tilt.dy.clamp(-1.0, 1.0);
-        final mag = tilt.distance.clamp(0.0, 1.0);
+      builder: (context, child) {
+        // 重力倾斜 + 手动拖动偏转（拖动松手后弹回）
+        final dx = (_tilt.value.dx + _dragX.value).clamp(-1.5, 1.5);
+        final dy = _tilt.value.dy.clamp(-1.0, 1.0);
+        final mag = Offset(dx, dy).distance.clamp(0.0, 1.5);
 
         Widget content = child!;
 
@@ -184,9 +226,9 @@ class _TiltCardState extends State<TiltCard>
               Positioned.fill(
                 child: IgnorePointer(
                   child: _ShineOverlay(
-                    dx: dx,
+                    dx: dx.clamp(-1.0, 1.0),
                     dy: dy,
-                    mag: mag,
+                    mag: mag.clamp(0.0, 1.0),
                     radius: widget.borderRadius,
                   ),
                 ),
@@ -225,6 +267,17 @@ class _TiltCardState extends State<TiltCard>
           child: content,
         );
       },
+    );
+
+    if (!widget.enableDrag) return body;
+
+    // 只接管横向拖动：纵向拖动仍交给列表滚动，互不冲突
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragUpdate: (d) => _onDragUpdate(d.delta.dx),
+      onHorizontalDragEnd: (_) => _onDragEnd(),
+      onHorizontalDragCancel: _onDragEnd,
+      child: body,
     );
   }
 }
