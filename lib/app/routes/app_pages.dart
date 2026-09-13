@@ -14,6 +14,8 @@ import '../../modules/more/invoice_page.dart';
 import '../../modules/more/more_page.dart';
 import '../../modules/more/salary_page.dart';
 import '../../modules/splash/splash_page.dart';
+import '../../modules/work/hourly_rate_page.dart';
+import '../../modules/work/money_progress_page.dart';
 import '../../modules/work/stopwatch_page.dart';
 import '../../modules/work/time_more_page.dart';
 import '../../modules/work/timezone_converter_page.dart';
@@ -97,6 +99,14 @@ class AppPages {
     GetPage(
       name: AppRoutes.tzConverter,
       page: () => const TimezoneConverterPage(),
+    ),
+    GetPage(
+      name: AppRoutes.hourlyRate,
+      page: () => const HourlyRatePage(),
+    ),
+    GetPage(
+      name: AppRoutes.moneyProgress,
+      page: () => const MoneyProgressPage(),
     ),
   ];
 }

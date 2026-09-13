@@ -27,4 +27,6 @@ class AppRoutes {
   static const String invoice = '/invoice';
   static const String exchange = '/exchange';
   static const String salary = '/salary';
+  static const String hourlyRate = '/hourly-rate';
+  static const String moneyProgress = '/money-progress';
 }

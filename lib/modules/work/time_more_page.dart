@@ -36,6 +36,18 @@ class TimeMorePage extends StatelessWidget {
       '查看并换算各国当前时间',
       AppRoutes.tzConverter,
     ),
+    (
+      Icons.calculate_rounded,
+      '时薪计算器',
+      '按标签时长与月薪折算时薪',
+      AppRoutes.hourlyRate,
+    ),
+    (
+      Icons.savings_rounded,
+      '来财进度条',
+      '实时看今日与月薪进账进度',
+      AppRoutes.moneyProgress,
+    ),
   ];
 
   @override

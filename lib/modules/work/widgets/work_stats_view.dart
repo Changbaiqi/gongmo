@@ -31,6 +31,8 @@ class _WorkStatsViewState extends State<WorkStatsView>
     duration: const Duration(milliseconds: 300),
     value: 1,
   );
+  // 时长趋势图方向：false 纵向柱形，true 横向条形（数值显示在末端）
+  bool _barHorizontal = false;
 
   @override
   void initState() {
@@ -315,7 +317,8 @@ class _WorkStatsViewState extends State<WorkStatsView>
     );
   }
 
-  /// 时长趋势卡片：按周期分桶的柱状图，无数据时显示占位文案
+  /// 时长趋势卡片：按周期分桶的柱状图，右上角切换横/纵方向，
+  /// 无数据时显示占位文案
   Widget _buildTrendCard(ColorScheme cs) {
     return Card(
       child: Padding(
@@ -323,9 +326,22 @@ class _WorkStatsViewState extends State<WorkStatsView>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('时长趋势',
-                style:
-                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                const Text('时长趋势',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                if (_ctrl.entryCount.value > 0)
+                  _ChartOrientationButton(
+                    horizontal: _barHorizontal,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _barHorizontal = !_barHorizontal);
+                    },
+                  ),
+              ],
+            ),
             const SizedBox(height: 12),
             if (_ctrl.entryCount.value == 0)
               SizedBox(
@@ -341,6 +357,7 @@ class _WorkStatsViewState extends State<WorkStatsView>
               DurationBarChart(
                 buckets: _ctrl.trendBuckets.toList(),
                 barColor: cs.primary,
+                horizontal: _barHorizontal,
               ),
           ],
         ),
@@ -419,6 +436,46 @@ class _SectionEntranceState extends State<_SectionEntrance> {
         duration: const Duration(milliseconds: 340),
         curve: Curves.easeOut,
         child: widget.child,
+      ),
+    );
+  }
+}
+
+/// 统计图方向切换按钮：右上角小图标，纵向柱形 ↔ 横向条形
+class _ChartOrientationButton extends StatelessWidget {
+  const _ChartOrientationButton({
+    required this.horizontal,
+    required this.onTap,
+  });
+
+  final bool horizontal;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: horizontal ? '切换为纵向' : '切换为横向',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: AnimatedRotation(
+            turns: horizontal ? 0.25 : 0,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            child: Icon(
+              Icons.bar_chart_rounded,
+              size: 17,
+              color: cs.primary,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -9,67 +9,124 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../work_stats_controller.dart';
 
-/// 单系列时长柱状图：点击柱形在其顶部显示时长，再次点击取消选中
+/// 单系列时长柱状图：点击柱形在其顶部显示时长，再次点击取消选中；
+/// horizontal 为 true 时改为横向条形图（每行左侧标签、末端显示数值）
 class DurationBarChart extends StatefulWidget {
   final List<WorkTrendBucket> buckets;
   final Color barColor;
+  final bool horizontal;
 
   const DurationBarChart({
     super.key,
     required this.buckets,
     required this.barColor,
+    this.horizontal = false,
   });
 
   @override
   State<DurationBarChart> createState() => _DurationBarChartState();
 }
 
-class _DurationBarChartState extends State<DurationBarChart> {
+class _DurationBarChartState extends State<DurationBarChart>
+    with SingleTickerProviderStateMixin {
   static const _hPad = 8.0; // 左右留白，与 painter 保持一致
+  static const _hTopPad = 6.0; // 横向模式顶部留白
+  static const _hRowH = 30.0; // 横向模式每行高度
   int? _selected; // 当前选中的柱下标，null 表示未选中
+
+  /// 首次加载 / 数据变化时，柱形从 0 增长到目标值的过渡动画
+  late final AnimationController _revealCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+  late final Animation<double> _reveal =
+      CurvedAnimation(parent: _revealCtrl, curve: Curves.easeOutCubic);
+
+  @override
+  void initState() {
+    super.initState();
+    _revealCtrl.forward();
+  }
 
   @override
   void didUpdateWidget(covariant DurationBarChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 换了一组数据（如翻页）就清空选中；仅数量变化时防越界
-    if (oldWidget.buckets != widget.buckets) {
+    // 视图每次 build 都会传入新的 list，这里按内容判断数据是否真的变化，
+    // 避免无关重建把增长动画打断
+    final changed = _signature(oldWidget.buckets) != _signature(widget.buckets);
+    if (changed || oldWidget.horizontal != widget.horizontal) {
       _selected = null;
+      _revealCtrl.forward(from: 0); // 新数据 / 新方向重播增长动画
     } else if (_selected != null && _selected! >= widget.buckets.length) {
       _selected = null;
     }
   }
 
+  String _signature(List<WorkTrendBucket> buckets) => buckets
+      .map((b) => '${b.label}:${b.minutes}')
+      .join('|');
+
+  @override
+  void dispose() {
+    _revealCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 190,
-      width: double.infinity,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: (details) {
-              final n = widget.buckets.length;
-              if (n == 0) return;
-              // 反算点击位置落在哪根柱的等分区间内
+    final chart = LayoutBuilder(
+      builder: (context, constraints) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (details) {
+            final n = widget.buckets.length;
+            if (n == 0) return;
+            int idx;
+            if (widget.horizontal) {
+              // 横向：按行反算点击下标
+              final rowH = (constraints.maxHeight - _hTopPad) / n;
+              idx = ((details.localPosition.dy - _hTopPad) / rowH).floor();
+            } else {
+              // 纵向：按列反算点击位置落在哪根柱的等分区间内
               final bw = (constraints.maxWidth - _hPad * 2) / n;
-              final idx =
-                  ((details.localPosition.dx - _hPad) / bw).floor();
-              if (idx < 0 || idx >= n) return;
-              HapticFeedback.selectionClick();
-              setState(() => _selected = _selected == idx ? null : idx);
-            },
-            child: CustomPaint(
-              painter: _DurationBarPainter(
-                buckets: widget.buckets,
-                barColor: widget.barColor,
-                labelColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                axisColor: Theme.of(context).colorScheme.outlineVariant,
-                selectedIndex: _selected,
-              ),
+              idx = ((details.localPosition.dx - _hPad) / bw).floor();
+            }
+            if (idx < 0 || idx >= n) return;
+            HapticFeedback.selectionClick();
+            setState(() => _selected = _selected == idx ? null : idx);
+          },
+          child: CustomPaint(
+            painter: _DurationBarPainter(
+              buckets: widget.buckets,
+              barColor: widget.barColor,
+              labelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              axisColor: Theme.of(context).colorScheme.outlineVariant,
+              selectedIndex: _selected,
+              reveal: _reveal,
+              horizontal: widget.horizontal,
             ),
-          );
-        },
+          ),
+        );
+      },
+    );
+
+    if (!widget.horizontal) {
+      return SizedBox(height: 190, width: double.infinity, child: chart);
+    }
+
+    // 横向条形图：行数多时固定视口高度，卡片内部可纵向滚动
+    final rows = widget.buckets.isEmpty ? 4 : widget.buckets.length;
+    final chartH =
+        math.max(140.0, rows * _hRowH + _hTopPad + 6);
+    final viewportH = math.min(chartH, 330.0);
+    return SizedBox(
+      height: viewportH,
+      width: double.infinity,
+      child: SingleChildScrollView(
+        physics: chartH > viewportH
+            ? const ClampingScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        child: SizedBox(height: chartH, width: double.infinity, child: chart),
       ),
     );
   }
@@ -82,6 +139,8 @@ class _DurationBarPainter extends CustomPainter {
   final Color labelColor;
   final Color axisColor;
   final int? selectedIndex;
+  final Animation<double> reveal;
+  final bool horizontal;
 
   _DurationBarPainter({
     required this.buckets,
@@ -89,11 +148,17 @@ class _DurationBarPainter extends CustomPainter {
     required this.labelColor,
     required this.axisColor,
     this.selectedIndex,
-  });
+    required this.reveal,
+    this.horizontal = false,
+  }) : super(repaint: reveal);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (buckets.isEmpty) return;
+    if (horizontal) {
+      _paintHorizontal(canvas, size);
+      return;
+    }
     const topPad = 22.0;
     const bottomPad = 26.0;
     final hPad = _hPadPadding;
@@ -149,16 +214,19 @@ class _DurationBarPainter extends CustomPainter {
 
       double barTop = topPad + plotH;
       if (b.minutes > 0) {
-        // 最小 2px 高度，保证有时长的柱可见
-        final h = math.max(2.0, b.minutes / maxV * plotH);
+        // 最小 2px 高度，保证有时长的柱可见；reveal 让柱从 0 长出
+        final full = math.max(2.0, b.minutes / maxV * plotH);
+        final h = full * reveal.value;
         barTop = topPad + plotH - h;
-        final rect = Rect.fromLTWH(cx - barW / 2, barTop, barW, h);
-        final rrect = RRect.fromRectAndCorners(
-          rect,
-          topLeft: const Radius.circular(3),
-          topRight: const Radius.circular(3),
-        );
-        canvas.drawRRect(rrect, Paint()..color = barColor);
+        if (h > 0.01) {
+          final rect = Rect.fromLTWH(cx - barW / 2, barTop, barW, h);
+          final rrect = RRect.fromRectAndCorners(
+            rect,
+            topLeft: const Radius.circular(3),
+            topRight: const Radius.circular(3),
+          );
+          canvas.drawRRect(rrect, Paint()..color = barColor);
+        }
       }
 
       if (isSel) {
@@ -169,6 +237,96 @@ class _DurationBarPainter extends CustomPainter {
         _drawAxisLabel(canvas, b.label, cx, topPad + plotH + 8, bold: isSel);
       }
     }
+  }
+
+  /// 横向条形图：左侧标签列 + 向右生长的条形，所有数值显示在条形末端
+  void _paintHorizontal(Canvas canvas, Size size) {
+    const topPad = 6.0;
+    const labelW = 46.0;
+    const axisGap = 8.0;
+    final plotLeft = labelW + axisGap;
+    final plotW = math.max(10.0, size.width - plotLeft - 12);
+    final rowH = (size.height - topPad) / buckets.length;
+
+    double maxV = 0;
+    for (final b in buckets) {
+      maxV = math.max(maxV, b.minutes);
+    }
+    if (maxV <= 0) maxV = 60;
+    maxV *= 1.15;
+
+    // 竖直轴线
+    canvas.drawLine(
+      Offset(plotLeft, topPad - 2),
+      Offset(plotLeft, size.height - 4),
+      Paint()
+        ..color = axisColor
+        ..strokeWidth = 1,
+    );
+
+    for (var i = 0; i < buckets.length; i++) {
+      final b = buckets[i];
+      final cy = topPad + rowH * i + rowH / 2;
+      final isSel = i == selectedIndex;
+      final barH = isSel
+          ? math.min(normalBarW(rowH) * 1.8, rowH * 0.55)
+          : normalBarW(rowH);
+
+      var w = 0.0;
+      if (b.minutes > 0) {
+        final full = math.max(2.0, b.minutes / maxV * plotW);
+        w = full * reveal.value;
+        if (w > 0.01) {
+          final rect = Rect.fromLTWH(plotLeft + 1, cy - barH / 2, w, barH);
+          final rrect = RRect.fromRectAndCorners(
+            rect,
+            topRight: const Radius.circular(3),
+            bottomRight: const Radius.circular(3),
+          );
+          canvas.drawRRect(rrect, Paint()..color = barColor);
+        }
+      }
+
+      // 左侧标签（右对齐，贴住轴线）
+      _drawLeftAxisLabel(canvas, b.label, labelW, cy, bold: isSel);
+
+      // 所有柱形的数值都显示在条形末端
+      _drawEndAmount(
+          canvas, formatMinutes(b.minutes), plotLeft + w + 5, cy, size.width);
+    }
+  }
+
+  void _drawLeftAxisLabel(Canvas canvas, String text, double labelW, double cy,
+      {bool bold = false}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+          color: labelColor,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset(labelW - tp.width - 6, cy - tp.height / 2));
+  }
+
+  void _drawEndAmount(
+      Canvas canvas, String text, double x, double cy, double chartWidth) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: barColor,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final lx = math.min(x, math.max(2.0, chartWidth - tp.width - 2));
+    tp.paint(canvas, Offset(lx, cy - tp.height / 2));
   }
 
   /// 常规柱宽：格子宽度的 40%，限制在 2.5~18px
@@ -213,7 +371,8 @@ class _DurationBarPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _DurationBarPainter oldDelegate) =>
       oldDelegate.buckets != buckets ||
-      oldDelegate.selectedIndex != selectedIndex;
+      oldDelegate.selectedIndex != selectedIndex ||
+      oldDelegate.horizontal != horizontal;
 }
 
 const _hPadPadding = 8.0; // 与 DurationBarChart._hPad 保持一致的绘制留白
