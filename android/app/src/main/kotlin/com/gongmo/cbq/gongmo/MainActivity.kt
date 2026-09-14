@@ -64,6 +64,9 @@ class MainActivity : FlutterFragmentActivity() {
                             "stopMenuNotification" -> result.success(stopMenuNotification())
                             "isMenuNotificationRunning" ->
                                 result.success(MenuNotificationService.running)
+                            // 用户是否希望菜单常驻（null=从未设置过）
+                            "menuDesiredState" ->
+                                result.success(MenuNotificationService.desiredState(this))
                             "consumePendingCapture" ->
                                 result.success(ScreenshotStore.consume(this))
                             // 常驻通知菜单按钮动作（冷启动读取并清空）
@@ -160,6 +163,8 @@ class MainActivity : FlutterFragmentActivity() {
     private fun stopMenuNotification(): Boolean {
         return try {
             stopService(Intent(this, MenuNotificationService::class.java))
+            // 记录"不再常驻"，避免重启/升级后自动恢复
+            MenuNotificationService.setDesired(this, false)
             true
         } catch (e: Exception) {
             false

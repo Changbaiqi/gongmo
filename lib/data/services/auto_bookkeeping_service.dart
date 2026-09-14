@@ -342,6 +342,22 @@ class AutoBookkeepingService {
   /// - 支出："已支付￥24.81" / "已成功支付24.81元" / "向XX付款￥24.81"
   /// - 收入："微信支付收款12.34元" / "已收款￥24.81"
   static (FinanceType, double, String?)? parseWechat(String text) {
+    // 别人向我付款/转账（如"豪瑜向你付款￥20.50"）→ 收入，
+    // 必须早于"向XX付款"判断，否则"向你"会被当成收款方
+    final toYou = RegExp(
+            r'([^，。；\s]{0,20}?)(?:通过.{0,12}?)?向\s*你(?:付款|支付|转账)[，,]?\s*[￥¥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?')
+        .firstMatch(text);
+    if (toYou != null) {
+      final v = double.tryParse(toYou.group(2) ?? '');
+      if (v != null && v > 0 && v < _maxAmount) {
+        final name = toYou.group(1)?.trim();
+        return (
+          FinanceType.income,
+          v,
+          (name == null || name.isEmpty) ? null : name,
+        );
+      }
+    }
     // 支出（带商户名）：向 XX 付款/支付/转账 ￥xx
     final toMerchant =
         RegExp(r'向(.{1,30}?)(?:付款|支付|转账)\s*[￥¥]?\s*([0-9]+(?:\.[0-9]+)?)')
@@ -435,8 +451,45 @@ class AutoBookkeepingService {
         return (FinanceType.expense, v, deduct.group(1));
       }
     }
+    // 收款：他人向我付款/转账，如"豪瑜通过扫码向你付款20.50元"、
+    // "XX转账给你20.50元"。必须放在支出判断之前，
+    // 否则其中的"付款/转账"会被误判成支出
+    final toYou = RegExp(
+            r'([^，。；\s]{0,20}?)(?:通过.{0,12}?)?(?:向\s*你|给\s*你)(?:付款|支付|转账)[，,]?\s*[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?')
+        .firstMatch(t);
+    final toYou2 = toYou ??
+        RegExp(
+                r'([^，。；\s]{0,20}?)转账给\s*你[，,]?\s*[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?')
+            .firstMatch(t);
+    if (toYou2 != null) {
+      final v = double.tryParse(toYou2.group(2) ?? '');
+      if (v != null && v > 0 && v < _maxAmount) {
+        final name = toYou2.group(1)?.trim();
+        return (
+          FinanceType.income,
+          v,
+          (name == null || name.isEmpty) ? null : name,
+        );
+      }
+    }
+    // 收款码/到账：如"支付宝到账20.50元" / "收款到账￥20.50"；
+    // 但主动转账（转账给/已转账等）不算，交给后面的支出逻辑
+    if (!RegExp(r'转账给|转给|已转账|成功转账').hasMatch(t)) {
+      final arrive = RegExp(
+              r'(?:收款到账|已到账|到账|入账|已收款|收款成功)\s*[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?')
+          .firstMatch(t);
+      if (arrive != null) {
+        final v = double.tryParse(arrive.group(1) ?? '');
+        if (v != null && v > 0 && v < _maxAmount) {
+          return (FinanceType.income, v, null);
+        }
+      }
+    }
     // 支出：金额在关键词之前，如"你有一笔1.50元的支出，领立减1.08元权益。"
     for (final re in [
+      // 主动转账给对方：如"你已转账给小明20.50元"
+      RegExp(
+          r'(?:转账给|转给|已转账)[^0-9]{0,20}?[¥￥]?\s*([0-9]+(?:\.[0-9]+)?)\s*元?'),
       RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*元(?:的)?(?:支出|消费|付款|扣款|交易|账单)'),
       // 关键词在金额之前，如"支出1.50元" / "消费人民币1.50元"
       RegExp(

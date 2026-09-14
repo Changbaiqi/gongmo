@@ -121,6 +121,16 @@ class ScreenshotMenuService {
     }
   }
 
+  /// 用户是否仍希望菜单常驻（原生记录，服务启停时写入）；
+  /// 返回 null 表示从未设置过（老版本升级上来的情况）
+  Future<bool?> menuDesiredState() async {
+    try {
+      return await _channel.invokeMethod<bool>('menuDesiredState');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 读取并清空待处理截图（App 冷启动 / 前台收到 onCaptureReady 后调用）
   Future<PendingCapture?> consumePendingCapture() async {
     try {

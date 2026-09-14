@@ -48,6 +48,36 @@ void main() {
     expect(r.$2, 1000.00);
   });
 
+  test('扫码收款文案记为收入（含付款方名字）', () {
+    final r =
+        AutoBookkeepingService.parseAlipay('豪瑜通过扫码向你付款20.50元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 20.50);
+    expect(r.$3, '豪瑜');
+  });
+
+  test('他人向你转账记为收入', () {
+    final r = AutoBookkeepingService.parseAlipay('小明向你转账88.00元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 88.00);
+  });
+
+  test('支付宝到账文案记为收入', () {
+    final r = AutoBookkeepingService.parseAlipay('支付宝到账20.50元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 20.50);
+  });
+
+  test('主动转账仍记为支出', () {
+    final r = AutoBookkeepingService.parseAlipay('你已转账给小明20.50元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 20.50);
+  });
+
   test('解析支付宝支出（含立减权益文案）', () {
     final r =
         AutoBookkeepingService.parseAlipay('你有一笔1.50元的支出，领立减1.08元权益。');

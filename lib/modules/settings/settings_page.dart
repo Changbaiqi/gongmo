@@ -1334,12 +1334,21 @@ class _ReminderCardState extends State<_ReminderCard> {
   int _minute = ReminderService.defaultMinute;
   bool _busy = false;
 
+  /// 精确闹钟是否已授权（未授权时小米等 ROM 可能明显延迟提醒）
+  bool _exactOk = true;
+
   @override
   void initState() {
     super.initState();
     _enabled = _reminder.enabled;
     _hour = _reminder.hour;
     _minute = _reminder.minute;
+    _refreshExact();
+  }
+
+  Future<void> _refreshExact() async {
+    final ok = await _reminder.canScheduleExact();
+    if (mounted) setState(() => _exactOk = ok);
   }
 
   String get _timeText =>
@@ -1356,9 +1365,12 @@ class _ReminderCardState extends State<_ReminderCard> {
           Get.snackbar('无法开启', '请在系统设置中允许「工墨」发送通知');
           return;
         }
+        // 尽量拿到精确闹钟权限（拒绝也不影响开启，只是可能延迟）
+        await _reminder.requestExactAlarmPermission();
       }
       await _reminder.setEnabled(v);
       if (mounted) setState(() => _enabled = v);
+      await _refreshExact();
       Get.snackbar(v ? '已开启记账提醒' : '已关闭记账提醒',
           v ? '每天 $_timeText 提醒你记账' : '将不再发送记账提醒');
     } finally {
@@ -1381,6 +1393,11 @@ class _ReminderCardState extends State<_ReminderCard> {
     if (_enabled) {
       Get.snackbar('提醒时间已更新', '每天 $_timeText 提醒你记账');
     }
+  }
+
+  Future<void> _sendTest() async {
+    await _reminder.showTest();
+    Get.snackbar('已发送测试通知', '下拉通知栏查看；看不到说明通知被系统拦截了');
   }
 
   @override
@@ -1421,6 +1438,66 @@ class _ReminderCardState extends State<_ReminderCard> {
                 ],
               ),
               onTap: _pickTime,
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.notifications_active_rounded,
+                  color: cs.primary),
+              title: const Text('发送测试提醒'),
+              subtitle: Text('立刻发一条通知，检查系统是否拦截',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+              trailing: const Icon(Icons.chevron_right, size: 18),
+              onTap: _sendTest,
+            ),
+            if (!_exactOk) ...[
+              const Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.error_outline_rounded,
+                    color: cs.error),
+                title: const Text('允许「闹钟和提醒」'),
+                subtitle: Text('未授权时小米等手机会明显延迟提醒，点击去开启',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () async {
+                  final ok = await _reminder.requestExactAlarmPermission();
+                  if (ok) await _reminder.scheduleDaily();
+                  await _refreshExact();
+                  Get.snackbar(ok ? '已允许精确提醒' : '未开启',
+                      ok ? '提醒将按时送达' : '可稍后在系统设置中开启');
+                },
+              ),
+            ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '小米/红米等系统还需在「应用信息」中允许「自启动」，'
+                    '并把省电策略设为「无限制」，否则定时提醒可能被系统杀掉。',
+                    style: TextStyle(
+                        fontSize: 11,
+                        height: 1.6,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                  ),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: () => KeepAliveService.instance
+                        .openSystemAppSettings(),
+                    child: Text(
+                      '打开应用设置 ›',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],

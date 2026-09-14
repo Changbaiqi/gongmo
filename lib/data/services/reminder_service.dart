@@ -17,12 +17,18 @@ class ReminderService {
   static final ReminderService instance = ReminderService._();
 
   static const _notifId = 1001;
+  static const _testNotifId = 1002;
+  static const _channelId = 'daily_bookkeeping_reminder';
   static const _kEnabled = 'reminder_enabled';
   static const _kHour = 'reminder_hour';
   static const _kMinute = 'reminder_minute';
 
   static const defaultHour = 21;
   static const defaultMinute = 0;
+
+  /// 通知小图标：必须是不带透明背景的白色 drawable，
+  /// 用 @mipmap/ic_launcher（自适应图标）会导致部分 ROM（如小米）通知发不出来
+  static const _smallIcon = 'ic_stat_gongmo';
 
   final StorageService _storage = StorageService();
   final FlutterLocalNotificationsPlugin _plugin =
@@ -40,11 +46,23 @@ class ReminderService {
   String get timeText =>
       '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
+  NotificationDetails get _details => const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          '每日记账提醒',
+          channelDescription: '每天定时提醒记录收支',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: _smallIcon,
+        ),
+        iOS: DarwinNotificationDetails(),
+      );
+
   /// 初始化通知插件与时区数据（幂等）
   Future<void> init() async {
     if (_initialized) return;
     await ensureTimezonesInitialized();
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const android = AndroidInitializationSettings(_smallIcon);
     const ios = DarwinInitializationSettings();
     try {
       await _plugin.initialize(
@@ -53,6 +71,10 @@ class ReminderService {
     } catch (_) {}
     _initialized = true;
   }
+
+  AndroidFlutterLocalNotificationsPlugin? get _android =>
+      _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
 
   /// 开关提醒
   Future<void> setEnabled(bool v) async {
@@ -71,38 +93,70 @@ class ReminderService {
     if (enabled) await scheduleDaily();
   }
 
+  /// 精确闹钟是否可用（Android 12+ 需用户在系统设置中授权；
+  /// 未授权时用非精确调度，小米等机型可能延迟较大）
+  Future<bool> canScheduleExact() async {
+    await init();
+    try {
+      final ok = await _android?.canScheduleExactNotifications();
+      return ok ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 申请精确闹钟权限（Android 12+ 会跳转系统设置页），返回是否已授权
+  Future<bool> requestExactAlarmPermission() async {
+    await init();
+    try {
+      final android = _android;
+      if (android == null) return true;
+      if (await android.canScheduleExactNotifications() ?? false) return true;
+      await android.requestExactAlarmsPermission();
+      return await android.canScheduleExactNotifications() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 调度每天固定时间的提醒
   Future<void> scheduleDaily() async {
     await init();
     await cancel();
+    // 优先用精确闹钟：小米等 ROM 对非精确闹钟的延迟/拦截很激进
+    final exact = await canScheduleExact();
     final now = tz.TZDateTime.now(tz.local);
     var next =
         tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
     if (!next.isAfter(now)) {
       next = next.add(const Duration(days: 1));
     }
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'daily_bookkeeping_reminder',
-        '每日记账提醒',
-        channelDescription: '每天定时提醒记录收支',
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
     try {
       await _plugin.zonedSchedule(
         _notifId,
         '记得记账',
         '今天还没有记录账目，花一分钟记一笔吧',
         next,
-        details,
+        _details,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
-        // 用非精确调度：无需申请精确闹钟权限，提醒晚几分钟无影响
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: exact
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.inexactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.time,
+      );
+    } catch (_) {}
+  }
+
+  /// 立即发一条测试通知，用于确认通知权限与渠道是否正常
+  Future<void> showTest() async {
+    await init();
+    try {
+      await _plugin.show(
+        _testNotifId,
+        '记账提醒测试',
+        '能看到这条通知说明提醒权限正常；若定时提醒仍未到，请检查系统「自启动」与省电策略。',
+        _details,
       );
     } catch (_) {}
   }

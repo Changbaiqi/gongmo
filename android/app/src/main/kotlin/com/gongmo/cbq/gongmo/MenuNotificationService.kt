@@ -53,12 +53,16 @@ class MenuNotificationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                // 用户主动点「关闭菜单」：记住意图，重启/升级后不再自动恢复
+                setDesired(this, false)
                 ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 running = false
                 stopSelf()
                 return START_NOT_STICKY
             }
             else -> {
+                // 由应用或系统恢复启动：记住"期望常驻"，升级/重启后可自动恢复
+                setDesired(this, true)
                 val nm = getSystemService(NotificationManager::class.java)
                 nm.notify(NOTIFICATION_ID, buildNotification())
                 running = true
@@ -194,8 +198,53 @@ class MenuNotificationService : Service() {
         const val NOTIFICATION_ID = 2001
         const val ACTION_STOP = "com.gongmo.cbq.gongmo.MENU_STOP"
 
+        private const val PREFS_NAME = "gongmo_menu_prefs"
+        private const val KEY_DESIRED = "desired"
+
         @Volatile
         var running = false
             private set
+
+        /**
+         * 用户是否希望菜单常驻（由服务启停写入）。
+         * 返回 null 表示从未设置过（老版本升级上来的情况）。
+         */
+        fun desiredState(context: android.content.Context): Boolean? {
+            val sp = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            if (!sp.contains(KEY_DESIRED)) return null
+            return sp.getBoolean(KEY_DESIRED, false)
+        }
+
+        fun setDesired(context: android.content.Context, desired: Boolean) {
+            context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .edit().putBoolean(KEY_DESIRED, desired).apply()
+        }
+    }
+}
+
+/**
+ * 升级 / 重启后自动恢复「截屏记账」常驻菜单。
+ *
+ * 仅当用户此前开启过（服务把 desired 记为 true）才恢复；
+ * 用户点过通知里的「关闭菜单」则不会自己弹回来。
+ */
+class MenuRestartReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: android.content.Context, intent: Intent?) {
+        val action = intent?.action ?: return
+        if (action != Intent.ACTION_BOOT_COMPLETED &&
+            action != Intent.ACTION_MY_PACKAGE_REPLACED &&
+            action != "android.intent.action.QUICKBOOT_POWERON"
+        ) {
+            return
+        }
+        if (MenuNotificationService.desiredState(context) != true) return
+        try {
+            androidx.core.content.ContextCompat.startForegroundService(
+                context,
+                Intent(context, MenuNotificationService::class.java)
+            )
+        } catch (_: Exception) {
+            // 系统限制后台启动前台服务时忽略，下次打开应用会再恢复
+        }
     }
 }

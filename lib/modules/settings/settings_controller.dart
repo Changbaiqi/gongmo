@@ -195,13 +195,27 @@ class SettingsController extends GetxController {
       accessibilityEnabled.value = false;
       screenshotMenuRunning.value = false;
     }
-    // 通知里的「关闭菜单」按钮会在原生侧直接停掉服务，
-    // 这里把开关同步为关闭并落盘，避免界面与真实状态不一致
-    if (screenshotMenu.value && !screenshotMenuRunning.value) {
+    if (!screenshotMenu.value || screenshotMenuRunning.value) return;
+    // 开关是开着的但通知不在：区分"用户主动关闭"与"被系统清掉"
+    // （升级、重启、被杀进程都会导致后者），后者要自动恢复而不是把开关关掉
+    final desired = await ScreenshotMenuService.instance.menuDesiredState();
+    if (desired == false) {
+      // 用户在通知里点过「关闭菜单」→ 同步为关闭并落盘
       screenshotMenu.value = false;
       try {
         await _sync.writeConfig('screenshot_menu_enabled', false);
       } catch (_) {}
+      return;
+    }
+    // 期望常驻（或老版本未记录）：重新贴出常驻菜单
+    try {
+      final ok =
+          await ScreenshotMenuService.instance.startMenuNotification();
+      screenshotMenuRunning.value = ok &&
+          await ScreenshotMenuService.instance.isMenuNotificationRunning();
+      if (ok) await AutoBookkeepingService.instance.refreshForegroundMode();
+    } catch (_) {
+      screenshotMenuRunning.value = false;
     }
   }
 
