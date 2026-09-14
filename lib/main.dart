@@ -18,6 +18,7 @@ import 'app/theme/app_theme.dart';
 import 'app/theme/theme_controller.dart';
 import 'data/services/auto_bookkeeping_service.dart';
 import 'data/services/attachment_service.dart';
+import 'data/services/crash_log_service.dart';
 import 'data/services/reminder_service.dart';
 import 'data/services/screenshot_menu_service.dart';
 import 'data/services/storage_service.dart';
@@ -35,6 +36,8 @@ import 'modules/sync/sync_controller.dart';
 /// 最后 runApp。任何一步失败都不应阻塞启动（关键处已有容错）。
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 崩溃日志：记录 Flutter/Dart 未捕获异常（原生侧由 GongmoApplication 记录）
+  CrashLogService.install();
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

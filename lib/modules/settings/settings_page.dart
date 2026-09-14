@@ -8,6 +8,7 @@
 // ============================================================
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
@@ -16,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
+import '../../data/services/crash_log_service.dart';
 import '../../data/services/github_sync_service.dart';
 import '../../data/services/keep_alive_service.dart';
 import '../../data/services/reminder_service.dart';
@@ -132,6 +134,15 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
+                  leading: const Icon(Icons.bug_report_outlined),
+                  title: const Text('崩溃日志'),
+                  subtitle: const Text('闪退排查用，可复制反馈',
+                      style: TextStyle(fontSize: 11.5)),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () => _showCrashLog(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.description_outlined),
                   title: const Text('开源协议'),
                   trailing: const Text('MIT'),
@@ -140,6 +151,52 @@ class SettingsPage extends StatelessWidget {
               ],
             ),
           )),
+        ],
+      ),
+    );
+  }
+
+  /// 显示崩溃日志（无记录时提示），支持一键复制/清空
+  Future<void> _showCrashLog(BuildContext context) async {
+    final content = await CrashLogService.read();
+    if (!context.mounted) return;
+    if (content.trim().isEmpty) {
+      Get.snackbar('暂无崩溃记录', '最近没有捕获到闪退日志');
+      return;
+    }
+    Get.dialog(
+      AlertDialog(
+        title: const Text('崩溃日志'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 380,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              content,
+              style: const TextStyle(fontSize: 11, height: 1.4),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await CrashLogService.clear();
+              Get.closeCurrentSnackbar();
+              Get.back();
+              Get.snackbar('已清空', '崩溃日志已删除');
+            },
+            child: const Text('清空'),
+          ),
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: content));
+              Get.closeCurrentSnackbar();
+              Get.back();
+              Get.snackbar('已复制', '把内容粘贴给开发者即可');
+            },
+            child: const Text('复制'),
+          ),
+          TextButton(onPressed: () => Get.back(), child: const Text('关闭')),
         ],
       ),
     );

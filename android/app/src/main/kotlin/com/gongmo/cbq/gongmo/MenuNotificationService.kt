@@ -25,10 +25,14 @@ class MenuNotificationService : Service() {
 
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** 是否已成功成为前台服务（未成功时一切操作直接放弃，避免系统杀进程） */
+    @Volatile
+    private var foregroundOk = false
+
     /** 巡检：部分机型（如 MIUI）允许划掉常驻通知，被划掉后立即重新贴出 */
     private val keepAlive = object : Runnable {
         override fun run() {
-            if (!running) return
+            if (!running || !foregroundOk) return
             try {
                 val nm = getSystemService(NotificationManager::class.java)
                 val alive = nm.activeNotifications?.any { it.id == NOTIFICATION_ID } == true
@@ -43,11 +47,26 @@ class MenuNotificationService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
-        startForegroundCompat(buildNotification())
-        running = true
-        handler.removeCallbacks(keepAlive)
-        handler.postDelayed(keepAlive, 3000)
+        try {
+            createChannel()
+            if (!startForegroundCompat(buildNotification())) {
+                // 没能成为前台服务必须立刻结束：否则系统会在超时后
+                // 以 "did not call startForeground" 杀掉进程（表现为闪退）
+                running = false
+                stopSelf()
+                return
+            }
+            foregroundOk = true
+            running = true
+            handler.removeCallbacks(keepAlive)
+            handler.postDelayed(keepAlive, 3000)
+        } catch (_: Throwable) {
+            running = false
+            try {
+                stopSelf()
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -61,11 +80,11 @@ class MenuNotificationService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
+                if (!foregroundOk || !running) return START_NOT_STICKY
                 // 由应用或系统恢复启动：记住"期望常驻"，升级/重启后可自动恢复
                 setDesired(this, true)
                 val nm = getSystemService(NotificationManager::class.java)
                 nm.notify(NOTIFICATION_ID, buildNotification())
-                running = true
             }
         }
         return START_STICKY
@@ -73,12 +92,14 @@ class MenuNotificationService : Service() {
 
     override fun onDestroy() {
         running = false
+        foregroundOk = false
         handler.removeCallbacks(keepAlive)
         super.onDestroy()
     }
 
-    private fun startForegroundCompat(notification: Notification) {
-        try {
+    /** 启动前台服务；失败返回 false（由调用方 stopSelf 兜底） */
+    private fun startForegroundCompat(notification: Notification): Boolean {
+        return try {
             ServiceCompat.startForeground(
                 this,
                 NOTIFICATION_ID,
@@ -87,13 +108,9 @@ class MenuNotificationService : Service() {
                     android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 else 0
             )
-        } catch (e: Exception) {
-            // 前台服务启动失败时不崩溃，退回普通通知
-            try {
-                val nm = getSystemService(NotificationManager::class.java)
-                nm.notify(NOTIFICATION_ID, notification)
-            } catch (_: Exception) {
-            }
+            true
+        } catch (e: Throwable) {
+            false
         }
     }
 
