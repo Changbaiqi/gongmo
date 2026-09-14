@@ -204,6 +204,32 @@ void main() {
     expect(AutoBookkeepingService.parseMeituan('您的订单预计30分钟送达'), isNull);
   });
 
+  test('美团广告通知不误记账（含支付/消费字样的推广）', () {
+    expect(
+        AutoBookkeepingService.parseMeituan(
+            '【美团】您有1张外卖红包待领取，点击领取立减20元'),
+        isNull);
+    expect(
+        AutoBookkeepingService.parseMeituan('【美团外卖】限时特惠，￥9.9起，点击查看'),
+        isNull);
+    expect(
+        AutoBookkeepingService.parseMeituan('【美团】外卖消费券限时领取，支付立减￥5'),
+        isNull);
+    expect(
+        AutoBookkeepingService.parseMeituan('【美团】您的订单金额￥23.50，正在配送中'),
+        isNull);
+    expect(
+        AutoBookkeepingService.parseMeituan('【美团月付】您的账单即将到期，请及时还款'),
+        isNull);
+  });
+
+  test('美团真实支付通知仍能记账', () {
+    final r = AutoBookkeepingService.parseMeituan('【美团月付】成功支付11.78元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 11.78);
+  });
+
   test('parseNotification 分发美团', () {
     final r = AutoBookkeepingService.parseNotification(
         'meituan', '【美团月付】成功支付11.78元');
