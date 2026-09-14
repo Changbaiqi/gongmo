@@ -38,6 +38,30 @@ class SyncController extends GetxController with WidgetsBindingObserver {
 
   final isSyncing = false.obs;
   final isRestoring = false.obs;
+
+  /// 顶部同步图标的动画状态：备份/恢复都会驱动，
+  /// 且保证至少展示 [_minSpin] 时间，避免瞬间完成看不到动画
+  final showSyncing = false.obs;
+  static const _minSpin = Duration(milliseconds: 1600);
+  DateTime? _spinStartedAt;
+
+  void _beginSpin() {
+    _spinStartedAt = DateTime.now();
+    showSyncing.value = true;
+  }
+
+  Future<void> _endSpin() async {
+    final started = _spinStartedAt;
+    if (started != null) {
+      final elapsed = DateTime.now().difference(started);
+      if (elapsed < _minSpin) {
+        await Future.delayed(_minSpin - elapsed);
+      }
+    }
+    _spinStartedAt = null;
+    showSyncing.value = false;
+  }
+
   final lastSyncTime = Rxn<DateTime>();
   final totalEntries = 0.obs;
   final workCount = 0.obs;
@@ -135,6 +159,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     final hash = _storage.syncSignature.hashCode;
     if (hash == _lastSyncedHash) return; // 数据无变化，跳过上传省流量
     isSyncing.value = true;
+    _beginSpin();
     try {
       await _sync.pushBackup();
       final now = DateTime.now();
@@ -147,6 +172,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       // 自动同步失败时静默，等待下次数据变动重试
     } finally {
       isSyncing.value = false;
+      await _endSpin();
     }
   }
 
@@ -159,12 +185,13 @@ class SyncController extends GetxController with WidgetsBindingObserver {
 
   /// 备份到 GitHub
   Future<void> pushToGithub() async {
-    if (isSyncing.value) return;
+    if (isSyncing.value || isRestoring.value) return;
     if (!isConnected) {
       _promptConfig();
       return;
     }
     isSyncing.value = true;
+    _beginSpin();
     try {
       await _sync.pushBackup();
       final now = DateTime.now();
@@ -180,6 +207,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       Get.snackbar('同步失败', '发生未知错误，请重试');
     } finally {
       isSyncing.value = false;
+      await _endSpin();
     }
   }
 
@@ -195,6 +223,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       return;
     }
     isRestoring.value = true;
+    _beginSpin();
     try {
       final data = await _sync.pullBackup();
       await _storage.restoreAllData(
@@ -230,6 +259,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       Get.snackbar('恢复失败', '备份数据解析失败，请确认备份文件完整');
     } finally {
       isRestoring.value = false;
+      await _endSpin();
     }
   }
 

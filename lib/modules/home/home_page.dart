@@ -87,15 +87,15 @@ class _HomePageState extends State<HomePage>
     super.initState();
     Get.put(FinanceController());
     Get.put(WorkController());
-    // 自动备份期间：顶部同步图标旋转；结束后停止
-    _syncWorker = ever<bool>(_sc.isSyncing, (v) {
+    // 备份/恢复期间：顶部同步图标旋转；结束后停止
+    _syncWorker = ever<bool>(_sc.showSyncing, (v) {
       if (v) {
-        _syncSpin.repeat();
+        if (!_syncSpin.isAnimating) _syncSpin.repeat();
       } else {
         _syncSpin.stop();
       }
     });
-    if (_sc.isSyncing.value) _syncSpin.repeat();
+    if (_sc.showSyncing.value) _syncSpin.repeat();
     // 新用户首次进入时展示交互式新手引导（只显示一次）。
     // 等路由过渡动画结束、控件位置稳定后再触发，避免高亮框位置偏移
     _scheduleHomeGuide();
@@ -249,7 +249,7 @@ class _HomePageState extends State<HomePage>
         centerTitle: true,
         actions: [
           Obx(() {
-            final backing = _sc.isSyncing.value;
+            final backing = _sc.showSyncing.value;
             return AnimatedSwitcher(
               duration: const Duration(milliseconds: 260),
               switchInCurve: Curves.easeOut,
@@ -263,26 +263,32 @@ class _HomePageState extends State<HomePage>
                 ),
               ),
               child: backing
-                  ? Container(
+                  ? GestureDetector(
                       key: const ValueKey('backing'),
-                      width: 58,
-                      height: 46,
-                      alignment: Alignment.center,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          RotationTransition(
-                            turns: _syncSpin,
-                            child: Icon(Icons.sync_rounded,
-                                size: 20, color: cs.primary),
-                          ),
-                          const SizedBox(height: 1),
-                          Text('备份中',
-                              style: TextStyle(
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.primary)),
-                        ],
+                      behavior: HitTestBehavior.opaque,
+                      // 同步过程中也要能点进同步页查看进度
+                      onTap: () => Get.toNamed('/sync'),
+                      child: Container(
+                        width: 58,
+                        height: 46,
+                        alignment: Alignment.center,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            RotationTransition(
+                              turns: _syncSpin,
+                              child: Icon(Icons.sync_rounded,
+                                  size: 20, color: cs.primary),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                                _sc.isRestoring.value ? '恢复中' : '同步中',
+                                style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.primary)),
+                          ],
+                        ),
                       ),
                     )
                   : IconButton(
