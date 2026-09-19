@@ -33,6 +33,15 @@ class GongmoAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         try {
             val evt = event ?: return
+            // 其它应用来了新通知：把截屏记账常驻菜单重新贴一遍，
+            // 让它在通知栏保持最前，不被一条条新通知顶下去
+            if (evt.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+                val from = evt.packageName?.toString()
+                if (from != null && from != packageName && from != "android") {
+                    MenuNotificationService.bumpIfRunning(this)
+                }
+                return
+            }
             if (evt.packageName?.toString() != WECHAT_PACKAGE) return
             if (!RedPacketWatch.enabled(this)) return
             val type = evt.eventType

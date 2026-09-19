@@ -75,6 +75,11 @@ class MainActivity : FlutterFragmentActivity() {
                             }
                             "consumePendingRedPacket" ->
                                 result.success(RedPacketWatch.consume(this))
+                            // 其它应用来通知时把常驻菜单重新贴到最前
+                            "bumpMenuNotification" -> {
+                                MenuNotificationService.bumpIfRunning(this)
+                                result.success(true)
+                            }
                             "consumePendingCapture" ->
                                 result.success(ScreenshotStore.consume(this))
                             // 常驻通知菜单按钮动作（冷启动读取并清空）

@@ -79,6 +79,15 @@ class MenuNotificationService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            ACTION_BUMP -> {
+                // 其它应用来了新通知：把菜单重新贴一遍，回到通知栏最前
+                if (!foregroundOk || !running) return START_NOT_STICKY
+                try {
+                    val nm = getSystemService(NotificationManager::class.java)
+                    nm.notify(NOTIFICATION_ID, buildNotification())
+                } catch (_: Throwable) {
+                }
+            }
             else -> {
                 if (!foregroundOk || !running) return START_NOT_STICKY
                 // 由应用或系统恢复启动：记住"期望常驻"，升级/重启后可自动恢复
@@ -185,12 +194,13 @@ class MenuNotificationService : Service() {
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(NotificationManager::class.java)
-        // 已创建的频道无法修改重要性，这里用新频道 ID 提升级别以尽量置顶
+        // 已创建的频道无法修改重要性，这里用新频道 ID 提升级别：
+        // 高重要级别才能在通知栏排到普通通知之前（并进入"重要"分类）
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "记账菜单",
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "截屏记账快捷菜单"
                 setShowBadge(false)
@@ -199,21 +209,40 @@ class MenuNotificationService : Service() {
             }
             nm.createNotificationChannel(channel)
         }
-        // 清理旧的低优先级频道
+        // 清理旧的频道（低优先级 / 旧分类）
         try {
             nm.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+        } catch (_: Exception) {
+        }
+        try {
+            nm.deleteNotificationChannel(OLD_CHANNEL_ID_V2)
         } catch (_: Exception) {
         }
     }
 
     companion object {
-        /** 提升重要级别后的新频道（置顶排序） */
-        const val CHANNEL_ID = "gongmo_menu_v2"
+        /** 高重要级别频道：在通知栏排序中位于普通通知之前 */
+        const val CHANNEL_ID = "gongmo_menu_v3"
 
         /** 旧频道，创建新频道时清理 */
         const val LEGACY_CHANNEL_ID = "gongmo_menu"
+        const val OLD_CHANNEL_ID_V2 = "gongmo_menu_v2"
         const val NOTIFICATION_ID = 2001
         const val ACTION_STOP = "com.gongmo.cbq.gongmo.MENU_STOP"
+        const val ACTION_BUMP = "com.gongmo.cbq.gongmo.MENU_BUMP"
+
+        /** 其它应用来了新通知时调用：把菜单重新贴到最前（未运行时忽略） */
+        fun bumpIfRunning(context: android.content.Context) {
+            if (!running) return
+            try {
+                context.startService(
+                    Intent(context, MenuNotificationService::class.java).apply {
+                        action = ACTION_BUMP
+                    }
+                )
+            } catch (_: Throwable) {
+            }
+        }
 
         private const val PREFS_NAME = "gongmo_menu_prefs"
         private const val KEY_DESIRED = "desired"

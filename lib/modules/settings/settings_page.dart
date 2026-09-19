@@ -807,7 +807,10 @@ class _ScreenshotBookkeepingCardState
                             subtitle: Text(
                               '在支付宝/微信等账单页下拉通知栏，点通知卡片里的'
                               '「截图记账」按钮即截屏识别；识别结果以弹窗确认金额后入账'
-                              '（需 Android 11 及以上）',
+                              '（需 Android 11 及以上）\n'
+                              '常驻菜单已使用高优先级频道；若在小米等机型上仍被其它通知'
+                              '顶下去，可在系统「通知管理」里把本应用通知设为「重要」，'
+                              '并检查「正在运行」分组是否需要展开。',
                               style: TextStyle(
                                   fontSize: 11,
                                   height: 1.4,

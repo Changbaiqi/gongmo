@@ -139,6 +139,13 @@ class ScreenshotMenuService {
     } catch (_) {}
   }
 
+  /// 其它应用来新通知时调用：让常驻菜单重新贴到通知栏最前
+  Future<void> bumpMenuNotification() async {
+    try {
+      await _channel.invokeMethod<bool>('bumpMenuNotification');
+    } catch (_) {}
+  }
+
   /// 取走无障碍服务识别到的待记账红包（没有则返回 null）
   Future<RedPacketRecord?> consumePendingRedPacket() async {
     try {
