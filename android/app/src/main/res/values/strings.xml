@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">工墨</string>
-    <string name="accessibility_service_description">用于「截屏记账」：点击常驻通知的自动记账按钮后，截取当前屏幕并离线识别账单文字，自动生成账目草稿供你确认。不会采集或上传屏幕内容。</string>
-    <string name="accessibility_service_summary">截屏识别账单，快速记账</string>
+    <string name="accessibility_service_description">用于「截屏记账」：点击常驻通知的自动记账按钮后，截取当前屏幕并离线识别账单文字，自动生成账目草稿供你确认。开启「微信红包自动记账」后，仅在微信拆开红包的收款页面读取金额用于记账。所有识别均在本机完成，不会采集或上传屏幕内容。</string>
+    <string name="accessibility_service_summary">截屏识别账单、识别微信红包收款，快速记账</string>
     <string name="notification_menu_title">工墨 · 截屏记账</string>
     <string name="notification_menu_subtitle">点「截图记账」截取当前页面并识别</string>
     <string name="notification_action_capture">截图记账</string>

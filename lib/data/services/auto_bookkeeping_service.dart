@@ -7,9 +7,12 @@
 
 import 'dart:async';
 import 'package:flutter_notification_listener/flutter_notification_listener.dart';
+import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import '../models/finance_entry.dart';
 import '../repositories/finance_repository.dart';
+import '../../modules/dashboard/dashboard_controller.dart';
+import '../../modules/finance/finance_controller.dart';
 import 'screenshot_menu_service.dart';
 import 'storage_service.dart';
 
@@ -52,7 +55,13 @@ class AutoBookkeepingService {
   static const supportedApps = <SupportedApp>[
     SupportedApp('alipay', '支付宝', 'com.eg.android.AlipayGphone'),
     SupportedApp('wechat', '微信', 'com.tencent.mm'),
-    SupportedApp('cmb', '招商银行', 'com.cmbchina.ccd.pluto.cmbActivity'),
+    // 招商银行（cmb.pb）与掌上生活（com.cmbchina.ccd.pluto.cmbActivity）
+    SupportedApp(
+      'cmb',
+      '招商银行',
+      'cmb.pb',
+      extraPackages: ['com.cmbchina.ccd.pluto.cmbActivity'],
+    ),
     SupportedApp(
       'meituan',
       '美团',
@@ -80,6 +89,50 @@ class AutoBookkeepingService {
 
   /// 是否自动记录退款（默认开启）
   bool get refundEnabled => _storage.getConfig('auto_refund') != false;
+
+  /// 是否开启「微信红包自动记账」（默认关闭，需无障碍服务）
+  bool get redPacketEnabled => _storage.getConfig('auto_red_packet') == true;
+
+  /// 开启/关闭红包识别，并把开关同步给无障碍服务
+  Future<void> setRedPacketEnabled(bool v) async {
+    await _storage.setConfig('auto_red_packet', v);
+    await ScreenshotMenuService.instance.setRedPacketWatch(v);
+  }
+
+  /// 处理无障碍服务识别到的待记账红包（应用启动 / 回到前台时调用）
+  Future<void> processPendingRedPacket() async {
+    if (!redPacketEnabled) return;
+    try {
+      // 应用启动 / 从后台恢复时可能还没初始化存储
+      await _storage.init();
+      await _storage.reloadConfig();
+      final record =
+          await ScreenshotMenuService.instance.consumePendingRedPacket();
+      if (record == null || record.amount <= 0) return;
+      final entry = FinanceEntry(
+        id: _uuid.v4(),
+        type: FinanceType.income,
+        amount: record.amount,
+        categoryId: 'inc_3',
+        description: '自动记账 · 微信红包',
+        date: record.time,
+        notificationSrc: 'wechat',
+      );
+      _financeRepo.save(entry);
+      // 界面上的账目列表同步刷新（控制器可能还没注册）
+      try {
+        Get.find<FinanceController>().loadEntries();
+      } catch (_) {}
+      try {
+        Get.find<DashboardController>(tag: 'dashboard').refreshData();
+      } catch (_) {}
+      if (Get.context != null) {
+        Get.snackbar('已记录微信红包', '收入 ${record.amount.toStringAsFixed(2)} 元');
+      }
+    } catch (_) {
+      // 单条红包处理失败不影响其它功能
+    }
+  }
 
   /// 是否已授予「通知使用权限」（监听通知的前提）
   Future<bool> hasPermission() async =>
@@ -283,16 +336,21 @@ class AutoBookkeepingService {
   static (FinanceType, double, String?)? parseNotification(
       String appKey, String text) {
     if (appKey == 'cmb') {
-      // 招商银行：如"您尾号9058的账户入账人民币1.00元"
-      final income =
-          RegExp(r'入账人民币\s*([0-9]+(?:\.[0-9]+)?)\s*元').firstMatch(text);
+      // 招商银行 / 掌上生活：
+      // - 收入："您尾号9058的账户入账人民币466.00元"
+      // - 支出："您尾号9058的账户扣款人民币287.33元"
+      // 关键词后可带少量非数字文字（如"，金额"），人民币可省略
+      final income = RegExp(
+              r'(?:入账|收入|转入|存入|退款|到账)[^0-9]{0,8}人民币?\s*([0-9]+(?:\.[0-9]+)?)\s*元')
+          .firstMatch(text);
       if (income != null) {
         final v = double.tryParse(income.group(1) ?? '');
         if (v != null && v > 0 && v < _maxAmount) {
           return (FinanceType.income, v, null);
         }
       }
-      final expense = RegExp(r'(?:支出|消费)人民币\s*([0-9]+(?:\.[0-9]+)?)\s*元')
+      final expense = RegExp(
+              r'(?:扣款|支出|消费|支付|转出)[^0-9]{0,8}人民币?\s*([0-9]+(?:\.[0-9]+)?)\s*元')
           .firstMatch(text);
       if (expense != null) {
         final v = double.tryParse(expense.group(1) ?? '');

@@ -1212,6 +1212,26 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                                 widget.ctrl.setAutoRefund(v),
                           ),
                           const Divider(height: 1),
+                          Obx(() => SwitchListTile(
+                                secondary: Icon(Icons.redeem_rounded,
+                                    color: cs.primary, size: 20),
+                                dense: true,
+                                title: const Text('微信红包自动记账',
+                                    style: TextStyle(fontSize: 13.5)),
+                                subtitle: Text(
+                                  widget.ctrl.autoRedPacket.value
+                                      ? '已开启：拆开红包后自动记为收入（需无障碍服务）'
+                                      : '识别「已存入零钱」页面，自动记录红包金额',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurfaceVariant
+                                          .withValues(alpha: 0.8)),
+                                ),
+                                value: widget.ctrl.autoRedPacket.value,
+                                onChanged: (v) =>
+                                    widget.ctrl.setAutoRedPacket(v),
+                              )),
+                          const Divider(height: 1),
                           ListTile(
                             dense: true,
                             leading: Icon(Icons.battery_saver_rounded,

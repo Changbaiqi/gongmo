@@ -312,4 +312,43 @@ void main() {
     expect(r!.$1, FinanceType.expense);
     expect(r.$2, 257.75);
   });
+
+  test('解析招商银行扣款通知（记为支出）', () {
+    final r = AutoBookkeepingService.parseNotification(
+        'cmb', '您尾号9058的账户扣款人民币287.33元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 287.33);
+  });
+
+  test('解析招商银行入账通知（记为收入）', () {
+    final r = AutoBookkeepingService.parseNotification(
+        'cmb', '您尾号9058的账户入账人民币466.00元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.income);
+    expect(r.$2, 466.00);
+  });
+
+  test('解析招商银行其它常见文案', () {
+    final transfer = AutoBookkeepingService.parseNotification(
+        'cmb', '您尾号9058的账户转出人民币120.00元');
+    expect(transfer, isNotNull);
+    expect(transfer!.$1, FinanceType.expense);
+    expect(transfer.$2, 120.00);
+
+    final refund = AutoBookkeepingService.parseNotification(
+        'cmb', '您尾号9058的账户退款人民币99.90元');
+    expect(refund, isNotNull);
+    expect(refund!.$1, FinanceType.income);
+    expect(refund.$2, 99.90);
+  });
+
+  test('招商银行包名覆盖主应用与掌上生活', () {
+    final pkgs = AutoBookkeepingService.supportedApps
+        .firstWhere((a) => a.key == 'cmb')
+        .allPackages
+        .toList();
+    expect(pkgs, contains('cmb.pb'));
+    expect(pkgs, contains('com.cmbchina.ccd.pluto.cmbActivity'));
+  });
 }

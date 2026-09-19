@@ -69,6 +69,14 @@ void main() async {
     }
   } catch (_) {}
   AutoBookkeepingService.instance.startIfNeeded(); // 若开关开启则启动监听服务
+  // 微信红包自动记账：同步原生开关并处理离线期间识别到的红包
+  try {
+    final redPacketOn = AutoBookkeepingService.instance.redPacketEnabled;
+    await ScreenshotMenuService.instance.setRedPacketWatch(redPacketOn);
+    if (redPacketOn) {
+      await AutoBookkeepingService.instance.processPendingRedPacket();
+    }
+  } catch (_) {}
   // 截屏记账：开关开启时恢复常驻通知菜单
   if (storage.getConfig('screenshot_menu_enabled') == true) {
     try {
@@ -141,6 +149,8 @@ class _GongMoAppState extends State<GongMoApp> with WidgetsBindingObserver {
         state == AppLifecycleState.hidden) {
       _pausedAt ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
+      // 回到前台：处理后台期间无障碍服务识别到的微信红包
+      AutoBookkeepingService.instance.processPendingRedPacket();
       final pausedAt = _pausedAt;
       _pausedAt = null;
       if (pausedAt == null) return;

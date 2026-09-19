@@ -67,6 +67,14 @@ class MainActivity : FlutterFragmentActivity() {
                             // 用户是否希望菜单常驻（null=从未设置过）
                             "menuDesiredState" ->
                                 result.success(MenuNotificationService.desiredState(this))
+                            // 微信红包自动记账：开关与待入账记录
+                            "setRedPacketWatch" -> {
+                                val enabled = call.argument<Boolean>("enabled") == true
+                                RedPacketWatch.setEnabled(this, enabled)
+                                result.success(true)
+                            }
+                            "consumePendingRedPacket" ->
+                                result.success(RedPacketWatch.consume(this))
                             "consumePendingCapture" ->
                                 result.success(ScreenshotStore.consume(this))
                             // 常驻通知菜单按钮动作（冷启动读取并清空）

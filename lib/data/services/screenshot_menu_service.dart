@@ -131,6 +131,24 @@ class ScreenshotMenuService {
     }
   }
 
+  /// 开关「微信红包自动记账」的原生识别（无障碍服务内生效）
+  Future<void> setRedPacketWatch(bool enabled) async {
+    try {
+      await _channel.invokeMethod<bool>(
+          'setRedPacketWatch', {'enabled': enabled});
+    } catch (_) {}
+  }
+
+  /// 取走无障碍服务识别到的待记账红包（没有则返回 null）
+  Future<RedPacketRecord?> consumePendingRedPacket() async {
+    try {
+      final result =
+          await _channel.invokeMethod<dynamic>('consumePendingRedPacket');
+      if (result is Map) return RedPacketRecord.fromMap(result);
+    } catch (_) {}
+    return null;
+  }
+
   /// 读取并清空待处理截图（App 冷启动 / 前台收到 onCaptureReady 后调用）
   Future<PendingCapture?> consumePendingCapture() async {
     try {
@@ -154,5 +172,24 @@ class ScreenshotMenuService {
     } catch (_) {
       return false;
     }
+  }
+}
+
+/// 无障碍服务识别到的一笔微信红包收款
+class RedPacketRecord {
+  const RedPacketRecord({required this.amount, required this.time});
+
+  final double amount;
+  final DateTime time;
+
+  factory RedPacketRecord.fromMap(Map<dynamic, dynamic> map) {
+    final amount = (map['amount'] as num?)?.toDouble() ?? 0;
+    final ms = (map['time'] as num?)?.toInt() ?? 0;
+    return RedPacketRecord(
+      amount: amount,
+      time: ms > 0
+          ? DateTime.fromMillisecondsSinceEpoch(ms)
+          : DateTime.now(),
+    );
   }
 }

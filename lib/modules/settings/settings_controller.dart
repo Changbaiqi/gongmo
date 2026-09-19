@@ -36,6 +36,9 @@ class SettingsController extends GetxController {
   /// 是否自动记录退款
   final autoRefund = true.obs;
 
+  /// 微信红包自动记账（需无障碍服务，默认关闭）
+  final autoRedPacket = false.obs;
+
   /// 分应用开关（alipay/cmb...），未设置的默认开启
   final autoApps = RxMap<String, bool>();
 
@@ -70,6 +73,7 @@ class SettingsController extends GetxController {
   Future<void> loadAutoAccounting() async {
     autoAccounting.value = _sync.readConfig('auto_accounting') == true;
     autoRefund.value = _sync.readConfig('auto_refund') != false;
+    autoRedPacket.value = _sync.readConfig('auto_red_packet') == true;
     final raw = _sync.readConfig('auto_apps');
     for (final app in AutoBookkeepingService.supportedApps) {
       autoApps[app.key] =
@@ -82,6 +86,28 @@ class SettingsController extends GetxController {
   Future<void> setAutoRefund(bool v) async {
     autoRefund.value = v;
     await _sync.writeConfig('auto_refund', v);
+  }
+
+  /// 开关微信红包自动记账；开启前检查无障碍服务是否已启用
+  Future<void> setAutoRedPacket(bool v) async {
+    autoRedPacket.value = v;
+    await AutoBookkeepingService.instance.setRedPacketEnabled(v);
+    if (!v) return;
+    // 开启后需要无障碍服务识别红包页面
+    bool accessible = false;
+    try {
+      accessible = await ScreenshotMenuService.instance
+          .isAccessibilityEnabled();
+    } catch (_) {}
+    if (!accessible) {
+      Get.snackbar('需要无障碍权限', '请在系统设置中开启「工墨」的无障碍服务',
+          duration: const Duration(seconds: 4));
+      try {
+        await ScreenshotMenuService.instance.openAccessibilitySettings();
+      } catch (_) {}
+    } else if (v) {
+      Get.snackbar('已开启红包自动记账', '拆开微信红包后会自动记为收入');
+    }
   }
 
   /// 设置单个应用的自动记账开关
