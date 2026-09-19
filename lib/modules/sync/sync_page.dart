@@ -105,17 +105,28 @@ class SyncPage extends StatelessWidget {
             _Entrance(
               index: 5,
               child: TextButton.icon(
-                onPressed: busy ? null : () => ctrl.exportJson(),
+                onPressed: busy ? null : () => ctrl.exportPackage(),
                 icon: const Icon(Icons.file_download_outlined, size: 18),
                 label: const Text('导出备份到本地'),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             _Entrance(
               index: 6,
+              child: TextButton.icon(
+                onPressed: busy ? null : () => ctrl.importFromFile(),
+                icon: const Icon(Icons.file_upload_outlined, size: 18),
+                label: const Text('导入备份'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _Entrance(
+              index: 7,
               child: Text(
                 '备份按年份分片保存在仓库的 gongmo_backup/ 目录；“备份”会先合并云端数据再上传，'
-                '多台设备同时记录也不会互相覆盖；“恢复”会用云端数据覆盖本地，请谨慎操作。',
+                '多台设备同时记录也不会互相覆盖；“恢复”会用云端数据覆盖本地，请谨慎操作。'
+                '「导出备份到本地」生成 .gongmo 数据包（压缩的原始分片文件），'
+                '「导入备份」读取该数据包或旧版 JSON，可选择合并（推荐）或覆盖。',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11.5,

@@ -65,6 +65,9 @@ class StorageService {
   List<TimerTag> get timerTags => _timerTags;
   List<InvoiceProfile> get invoiceProfiles => _invoiceProfiles;
 
+  /// 本地数据目录（导出 .gongmo 备份包时按原始分片文件打包）
+  Directory get dataDir => _dataDir;
+
   /// 创建数据目录并加载全部数据（幂等，可被后台引擎重复调用）
   Future<void> init() async {
     if (_initialized) return;

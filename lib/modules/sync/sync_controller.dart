@@ -7,11 +7,10 @@
 //       三个控制器刷新；被 SyncPage 使用，随 App 常驻。
 // ============================================================
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../data/models/account.dart';
 import '../../data/models/category.dart';
 import '../../data/models/finance_entry.dart';
@@ -19,6 +18,7 @@ import '../../data/models/invoice_profile.dart';
 import '../../data/models/timer_tag.dart';
 import '../../data/models/work_entry.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
+import '../../data/services/backup_package_service.dart';
 import '../../data/services/github_sync_service.dart';
 import '../../data/services/storage_service.dart';
 import '../../data/services/sync_merge.dart';
@@ -263,31 +263,151 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  /// 导出备份 JSON 到本地 Documents 目录。
+  /// 导出备份到本地：把整合后的数据按原始分片文件压缩成 `.gongmo` 包。
   ///
   /// 纯本地导出，不依赖 GitHub 连接；文件名带秒级时间戳避免覆盖。
-  /// 结构为 `{app, version, exportedAt, data}`，data 即 StorageService 的全量快照。
-  Future<void> exportJson() async {
+  /// 包内保留 work_entries_2026.json 等原始文件，导入时可原样还原。
+  Future<void> exportPackage() async {
     try {
-      final docs = await getApplicationDocumentsDirectory();
-      // ISO 时间如 2026-09-11T12:34:56，替换冒号以兼容文件名
-      final ts = DateTime.now()
-          .toIso8601String()
-          .substring(0, 19)
-          .replaceAll(':', '-');
-      final file = File('${docs.path}/gongmo_backup_$ts.json');
-      await file.writeAsString(
-        const JsonEncoder.withIndent('  ').convert({
-          'app': 'gongmo',
-          'version': 1,
-          'exportedAt': DateTime.now().toIso8601String(),
-          'data': _storage.exportAllData(),
-        }),
-      );
-      Get.snackbar('导出成功', '已保存到 ${file.path}');
+      final path = await BackupPackageService.instance.exportPackage();
+      Get.snackbar('导出成功', '已保存到 $path');
     } catch (e) {
       Get.snackbar('导出失败', '写入文件失败，请重试');
     }
+  }
+
+  /// 从本地备份包导入。
+  ///
+  /// 支持 `.gongmo` 压缩包（本页导出，内含原始分片文件）与旧版 `.json` 导出。
+  /// 先弹确认框让用户选择「合并导入」或「覆盖导入」，再执行；合并规则与
+  /// 云端同步一致（同 id 取较新，删除墓碑优先），保证多设备数据不会被旧备份整包冲掉。
+  Future<void> importFromFile() async {
+    if (isSyncing.value || isRestoring.value) return;
+    Map<String, dynamic> raw;
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['gongmo', 'json'],
+        withData: false,
+      );
+      final path = picked?.files.single.path;
+      if (path == null) return; // 用户取消
+      final data = await BackupPackageService.instance.readBackup(File(path));
+      if (data == null) {
+        Get.snackbar('导入失败', '文件内容不是有效的备份');
+        return;
+      }
+      raw = data;
+    } on FormatException {
+      Get.snackbar('导入失败', '备份文件格式不正确');
+      return;
+    } catch (e) {
+      Get.snackbar('导入失败', '读取文件失败，请重试');
+      return;
+    }
+
+    const keys = [
+      'workEntries',
+      'financeEntries',
+      'categories',
+      'accounts',
+      'timerTags',
+      'invoiceProfiles',
+    ];
+    if (!keys.any((k) => raw[k] is List)) {
+      Get.snackbar('导入失败', '备份里没有可导入的数据');
+      return;
+    }
+
+    final mode = await _confirmImport(raw, keys);
+    if (mode == null) return;
+    isRestoring.value = true;
+    _beginSpin();
+    try {
+      final bool changed;
+      if (mode == 'replace') {
+        await _storage.restoreAllData(
+          workEntries: _parseList(raw['workEntries'], WorkEntry.fromJson),
+          financeEntries:
+              _parseList(raw['financeEntries'], FinanceEntry.fromJson),
+          categories: _parseList(raw['categories'], Category.fromJson),
+          accounts: _parseList(raw['accounts'], Account.fromJson),
+          timerTags: _parseList(raw['timerTags'], TimerTag.fromJson),
+          invoiceProfiles:
+              _parseList(raw['invoiceProfiles'], InvoiceProfile.fromJson),
+          tombstones: SyncMerge.parseIntMap(raw['tombstones']),
+        );
+        // 备份里带了预算配置（如云端分片导出）就一并恢复
+        try {
+          final dc = Get.find<DashboardController>();
+          final bMap = <String, double>{};
+          if (raw['budgets'] is Map) {
+            (raw['budgets'] as Map).forEach((k, v) {
+              final d = double.tryParse('$v');
+              if (d != null && d > 0) bMap['$k'] = d;
+            });
+          }
+          final total = double.tryParse('${raw['totalBudget'] ?? 0}') ?? 0;
+          if (bMap.isNotEmpty || total > 0) dc.restoreBudgets(bMap, total);
+        } catch (_) {}
+        changed = true;
+      } else {
+        changed = await _storage.mergeRemoteData(raw);
+      }
+      _lastSyncedHash = 0; // 数据已变化，允许下一次自动备份重新上传
+      _refreshAllControllers();
+      refreshStats();
+      Get.snackbar(
+        changed ? '导入完成' : '没有新数据',
+        changed
+            ? (mode == 'replace' ? '已用备份覆盖本地数据' : '已合并备份中的新记录')
+            : '本地数据已经是最新的，无需导入',
+      );
+    } catch (e) {
+      Get.snackbar('导入失败', '备份数据解析失败，请确认文件完整');
+    } finally {
+      isRestoring.value = false;
+      await _endSpin();
+    }
+  }
+
+  /// 导入确认框：展示备份内容统计并选择导入方式
+  Future<String?> _confirmImport(
+      Map<String, dynamic> raw, List<String> keys) {
+    int count(String k) => raw[k] is List ? (raw[k] as List).length : 0;
+    final work = count('workEntries');
+    final finance = count('financeEntries');
+    final others =
+        count('categories') + count('accounts') + count('timerTags') +
+            count('invoiceProfiles');
+    return Get.dialog<String>(
+      AlertDialog(
+        title: const Text('导入备份'),
+        content: Text(
+          '备份包含：\n'
+          '· 计时记录 $work 条\n'
+          '· 账目记录 $finance 条\n'
+          '· 分类/账户/标签等 $others 条\n\n'
+          '「合并导入」同一条保留较新的，删除过的记录不会恢复（推荐）；\n'
+          '「覆盖导入」会用备份内容替换本地数据，请谨慎操作。',
+          style: const TextStyle(fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: null),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: 'replace'),
+            child: const Text('覆盖导入'),
+          ),
+          FilledButton(
+            onPressed: () => Get.back(result: 'merge'),
+            child: const Text('合并导入'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 把云端返回的 dynamic 列表安全解析为模型列表；字段缺失或类型不符时跳过。

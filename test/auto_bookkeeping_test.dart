@@ -245,4 +245,71 @@ void main() {
     expect(r!.$1, FinanceType.income);
     expect(r.$2, 5.00);
   });
+
+  test('解析支付宝免密扣款（中文商户名）', () {
+    final r = AutoBookkeepingService.parseAlipay(
+        '你在滴滴出行有一笔13.00元的免密/自动扣款支付，点击领取6个支付宝积分。');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 13.00);
+    expect(r.$3, '滴滴出行');
+  });
+
+  test('解析账户付款成功通知', () {
+    final r = AutoBookkeepingService.parseAlipay(
+        '账户208**@qq.com于09月19日21时02分成功付款38.00元');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 38.00);
+  });
+
+  test('解析美团支付成功（带剩余额度）', () {
+    final r =
+        AutoBookkeepingService.parseMeituan('成功支付257.75元，查看剩余额度>>');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 257.75);
+  });
+
+  test('长通知正文在 bigText 时也能解析（折叠通知）', () {
+    final full = AutoBookkeepingService.composeEventText(
+      title: '支付宝',
+      text: '你有一笔新的交易',
+      raw: {
+        'bigText': '你在滴滴出行有一笔13.00元的免密/自动扣款支付，点击领取6个支付宝积分。',
+      },
+    );
+    final r = AutoBookkeepingService.parseAlipay(full);
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 13.00);
+    expect(r.$3, '滴滴出行');
+  });
+
+  test('composeEventText 合并 textLines 并去重', () {
+    final full = AutoBookkeepingService.composeEventText(
+      title: '支付宝',
+      text: '通知',
+      raw: {
+        'textLines': [
+          '账户208**@qq.com于09月19日21时02分成功付款38.00元',
+          '通知',
+        ],
+      },
+    );
+    expect(full.contains('38.00'), isTrue);
+    expect('通知'.allMatches(full).length, 1);
+  });
+
+  test('美团长通知（bigText）能解析', () {
+    final full = AutoBookkeepingService.composeEventText(
+      title: '美团',
+      text: '支付成功',
+      raw: {'bigText': '成功支付257.75元，查看剩余额度>>'},
+    );
+    final r = AutoBookkeepingService.parseMeituan(full);
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 257.75);
+  });
 }

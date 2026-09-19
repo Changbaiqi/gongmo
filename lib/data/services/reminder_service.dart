@@ -18,7 +18,11 @@ class ReminderService {
 
   static const _notifId = 1001;
   static const _testNotifId = 1002;
-  static const _channelId = 'daily_bookkeeping_reminder';
+  static const _channelId = 'daily_bookkeeping_reminder_v2';
+
+  /// 旧频道：部分 ROM（如 MIUI）会把旧频道自动降级/折叠，
+  /// 初始化时删除，改用新频道让系统重新识别
+  static const _legacyChannelId = 'daily_bookkeeping_reminder';
   static const _kEnabled = 'reminder_enabled';
   static const _kHour = 'reminder_hour';
   static const _kMinute = 'reminder_minute';
@@ -51,9 +55,17 @@ class ReminderService {
           _channelId,
           '每日记账提醒',
           channelDescription: '每天定时提醒记录收支',
-          importance: Importance.high,
+          // 最高重要级别：小米等 ROM 只有高重要级别才允许横幅（悬浮）通知
+          importance: Importance.max,
           priority: Priority.high,
+          category: AndroidNotificationCategory.reminder,
           icon: _smallIcon,
+          channelShowBadge: true,
+          visibility: NotificationVisibility.public,
+          ticker: '记得记账',
+          styleInformation: BigTextStyleInformation(
+            '今天还没有记录账目，花一分钟记一笔吧',
+          ),
         ),
         iOS: DarwinNotificationDetails(),
       );
@@ -68,6 +80,10 @@ class ReminderService {
       await _plugin.initialize(
         const InitializationSettings(android: android, iOS: ios),
       );
+    } catch (_) {}
+    // 清理旧的提醒频道（其分类可能已被系统自动降级）
+    try {
+      await _android?.deleteNotificationChannel(_legacyChannelId);
     } catch (_) {}
     _initialized = true;
   }
@@ -157,6 +173,27 @@ class ReminderService {
         '记账提醒测试',
         '能看到这条通知说明提醒权限正常；若定时提醒仍未到，请检查系统「自启动」与省电策略。',
         _details,
+      );
+    } catch (_) {}
+  }
+
+  /// 1 分钟后投递一条测试提醒：用于验证定时通知链路是否真的能按时送达
+  Future<void> scheduleTestInOneMinute() async {
+    await init();
+    final exact = await canScheduleExact();
+    final when = tz.TZDateTime.now(tz.local).add(const Duration(minutes: 1));
+    try {
+      await _plugin.zonedSchedule(
+        _testNotifId,
+        '记账提醒测试',
+        '如果你在 1 分钟内看到这条通知，说明定时提醒链路正常。',
+        when,
+        _details,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        androidScheduleMode: exact
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.inexactAllowWhileIdle,
       );
     } catch (_) {}
   }

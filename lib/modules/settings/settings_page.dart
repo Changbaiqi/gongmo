@@ -1508,6 +1508,20 @@ class _ReminderCardState extends State<_ReminderCard> {
               trailing: const Icon(Icons.chevron_right, size: 18),
               onTap: _sendTest,
             ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.timer_outlined, color: cs.primary),
+              title: const Text('1 分钟后试一下'),
+              subtitle: Text('验证系统能否按时投递定时通知',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+              trailing: const Icon(Icons.chevron_right, size: 18),
+              onTap: () async {
+                await _reminder.scheduleTestInOneMinute();
+                Get.snackbar('已安排测试提醒', '1 分钟后会收到一条通知，请注意查收');
+              },
+            ),
             if (!_exactOk) ...[
               const Divider(height: 1),
               ListTile(
@@ -1535,7 +1549,8 @@ class _ReminderCardState extends State<_ReminderCard> {
                 children: [
                   Text(
                     '小米/红米等系统还需在「应用信息」中允许「自启动」，'
-                    '并把省电策略设为「无限制」，否则定时提醒可能被系统杀掉。',
+                    '并把省电策略设为「无限制」；同时在「通知管理」里允许通知、'
+                    '设为重要或允许横幅，否则定时提醒可能被系统拦截或折叠。',
                     style: TextStyle(
                         fontSize: 11,
                         height: 1.6,

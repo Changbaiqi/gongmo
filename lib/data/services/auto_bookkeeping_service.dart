@@ -149,6 +149,47 @@ class AutoBookkeepingService {
     } catch (_) {}
   }
 
+  /// 组装用于解析的通知文本。
+  ///
+  /// 关键：部分应用（支付宝/美团等）的长通知只把折叠短文本放进 text，
+  /// 真正的正文（含金额）在 bigText / summaryText / subText / textLines
+  /// 等扩展字段里，必须一并取出参与解析，否则会漏记账。
+  static String composeEventText({
+    String? title,
+    String? text,
+    String? message,
+    Map<dynamic, dynamic>? raw,
+  }) {
+    final parts = <String>[];
+    void add(String? s) {
+      final v = (s ?? '').trim();
+      if (v.isNotEmpty && !parts.contains(v)) parts.add(v);
+    }
+
+    add(title);
+    add(text);
+    if (raw != null) {
+      for (final key in const [
+        'bigText',
+        'summaryText',
+        'subText',
+        'infoText',
+        'textLines',
+      ]) {
+        final v = raw[key];
+        if (v is String) {
+          add(v);
+        } else if (v is Iterable) {
+          for (final item in v) {
+            if (item is String) add(item);
+          }
+        }
+      }
+    }
+    add(message);
+    return parts.join(' ');
+  }
+
   /// 处理一条通知事件（运行在后台引擎）
   Future<void> handleEvent(NotificationEvent evt) async {
     try {
@@ -170,7 +211,12 @@ class AutoBookkeepingService {
       final text = (evt.text ?? '').trim();
       final message = (evt.message ?? '').trim();
       // 有的通知正文只在 title / message（大文本）里，合并后再解析
-      final full = '$title $text $message'.trim();
+      final full = composeEventText(
+        title: title,
+        text: text,
+        message: message,
+        raw: evt.raw,
+      );
       if (full.isEmpty) return;
 
       // 微信：仅处理通知中带"微信"来源字样（标题通常为"微信支付"）的
