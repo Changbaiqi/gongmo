@@ -339,24 +339,31 @@ class AutoBookkeepingService {
       // 招商银行 / 掌上生活：
       // - 收入："您尾号9058的账户入账人民币466.00元"
       // - 支出："您尾号9058的账户扣款人民币287.33元"
-      // 关键词后可带少量非数字文字（如"，金额"），人民币可省略
-      final income = RegExp(
-              r'(?:入账|收入|转入|存入|退款|到账)[^0-9]{0,8}人民币?\s*([0-9]+(?:\.[0-9]+)?)\s*元')
-          .firstMatch(text);
-      if (income != null) {
-        final v = double.tryParse(income.group(1) ?? '');
-        if (v != null && v > 0 && v < _maxAmount) {
-          return (FinanceType.income, v, null);
-        }
+      // - 快捷支付："…发生快捷支付扣款，人民币8.00"（这种结尾没有"元"）
+      // 关键词后可带少量非数字文字；金额前是"人民币"或后面带"元"才算数，
+      // 避免把日期等裸数字当成金额
+      double? matchAmount(String keywords) {
+        final withRenminbi = RegExp(
+            '(?:$keywords)[^0-9]{0,8}人民币\\s*([0-9]+(?:\\.[0-9]+)?)');
+        final m1 = withRenminbi.firstMatch(text);
+        if (m1 != null) return double.tryParse(m1.group(1) ?? '');
+        final withYuan = RegExp(
+            '(?:$keywords)[^0-9]{0,8}人民币?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*元');
+        final m2 = withYuan.firstMatch(text);
+        return m2 == null ? null : double.tryParse(m2.group(1) ?? '');
       }
-      final expense = RegExp(
-              r'(?:扣款|支出|消费|支付|转出)[^0-9]{0,8}人民币?\s*([0-9]+(?:\.[0-9]+)?)\s*元')
-          .firstMatch(text);
-      if (expense != null) {
-        final v = double.tryParse(expense.group(1) ?? '');
-        if (v != null && v > 0 && v < _maxAmount) {
-          return (FinanceType.expense, v, null);
-        }
+
+      // 【商户名】作为备注，如"…在【支付宝-蜜雪冰城】发生快捷支付扣款…"
+      final merchant =
+          RegExp(r'【(.{1,20}?)】').firstMatch(text)?.group(1)?.trim();
+
+      final income = matchAmount('入账|收入|转入|存入|退款|到账');
+      if (income != null && income > 0 && income < _maxAmount) {
+        return (FinanceType.income, income, merchant);
+      }
+      final expense = matchAmount('扣款|支出|消费|支付|转出');
+      if (expense != null && expense > 0 && expense < _maxAmount) {
+        return (FinanceType.expense, expense, merchant);
       }
       return null;
     }
@@ -480,12 +487,14 @@ class AutoBookkeepingService {
         return (FinanceType.expense, v, toMerchant.group(1)?.trim());
       }
     }
-    // 支出：已支付￥24.81 / 支付成功 ¥24.81 / 已成功支付24.81元
+    // 支出：已支付￥24.81 / 支付成功 ¥24.81 / 已续费￥19.00 /
+    // 已扣费￥15.00 / 已成功支付24.81元
     for (final re in [
       RegExp(
-          r'(?:已支付|支付成功|付款成功|已付款|支付)[：:\s]*[￥¥]\s*([0-9]+(?:\.[0-9]+)?)'),
+          r'(?:已支付|支付成功|付款成功|已付款|已续费|续费成功|已扣费|扣费成功|已扣款|扣款成功|已缴费|缴费成功|扣费|续费|支付)[：:\s]*[￥¥]\s*([0-9]+(?:\.[0-9]+)?)'),
       RegExp(r'[￥¥]\s*([0-9]+(?:\.[0-9]+)?)\s*(?:已支付|支付成功)'),
-      RegExp(r'已(?:成功)?(?:支付|付款|转账)\s*([0-9]+(?:\.[0-9]+)?)\s*元'),
+      RegExp(
+          r'已(?:成功)?(?:支付|付款|转账|续费|扣费|扣款|缴费)\s*([0-9]+(?:\.[0-9]+)?)\s*元'),
     ]) {
       final m = re.firstMatch(text);
       if (m != null) {

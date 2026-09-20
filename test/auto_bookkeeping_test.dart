@@ -329,6 +329,21 @@ void main() {
     expect(r.$2, 466.00);
   });
 
+  test('解析招商银行快捷支付扣款（无"元"结尾，带商户名）', () {
+    final r = AutoBookkeepingService.parseNotification('cmb',
+        '您账户9058于09月20日21:22在【支付宝-蜜雪冰城】发生快捷支付扣款，人民币8.00');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 8.00);
+    expect(r.$3, '支付宝-蜜雪冰城');
+
+    final r2 = AutoBookkeepingService.parseNotification('cmb',
+        '您账户9058于09月20日18:40在【支付宝-广东岭南通股份有限公司】发生快捷支付扣款，人民币50.00');
+    expect(r2, isNotNull);
+    expect(r2!.$1, FinanceType.expense);
+    expect(r2.$2, 50.00);
+  });
+
   test('解析招商银行其它常见文案', () {
     final transfer = AutoBookkeepingService.parseNotification(
         'cmb', '您尾号9058的账户转出人民币120.00元');
@@ -350,5 +365,17 @@ void main() {
         .toList();
     expect(pkgs, contains('cmb.pb'));
     expect(pkgs, contains('com.cmbchina.ccd.pluto.cmbActivity'));
+  });
+
+  test('解析微信自动续费扣款', () {
+    final r = AutoBookkeepingService.parseWechat('[3条]微信支付: 已续费￥19.00');
+    expect(r, isNotNull);
+    expect(r!.$1, FinanceType.expense);
+    expect(r.$2, 19.00);
+
+    final r2 = AutoBookkeepingService.parseWechat('微信支付：已扣费￥15.00');
+    expect(r2, isNotNull);
+    expect(r2!.$1, FinanceType.expense);
+    expect(r2.$2, 15.00);
   });
 }
