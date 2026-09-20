@@ -148,8 +148,10 @@ class StorageService {
   Future<void> _saveTombstones() async {
     try {
       SyncMerge.prune(_tombstones);
-      await File('${_dataDir.path}/$_tombstoneFile')
-          .writeAsString(json.encode(_tombstones));
+      await _writeAtomic(
+        File('${_dataDir.path}/$_tombstoneFile'),
+        json.encode(_tombstones),
+      );
     } catch (_) {}
   }
 
@@ -161,7 +163,7 @@ class StorageService {
 
   Future<void> _saveConfigFile() async {
     final file = File('${_dataDir.path}/${AppConstants.configFile}');
-    await file.writeAsString(json.encode(_config));
+    await _writeAtomic(file, json.encode(_config));
   }
 
   /// 旧版本单文件迁移到按年分片后删除
@@ -218,11 +220,41 @@ class StorageService {
           final list = json.decode(content) as List<dynamic>;
           result.addAll(list.map((e) => fromJson(e as Map<String, dynamic>)));
         } catch (_) {
-          // 单个分片损坏时跳过，不影响其他年份数据
+          // 单个分片读不出来时保留原文件（改名 .bad），
+          // 绝不能让它被后续保存逻辑当作“无数据”清理掉
+          await _quarantine(entity);
         }
       }
     } catch (_) {}
     return result;
+  }
+
+  // ---------- 数据安全：损坏文件保留 + 原子写入 ----------
+
+  /// 读取失败的文件列表（供界面提示“从备份恢复”）
+  final List<String> loadErrors = [];
+
+  /// 读取失败的文件改名保留为 .bad，避免被后续保存覆盖或清理
+  Future<void> _quarantine(File file) async {
+    final name = file.uri.pathSegments.last;
+    try {
+      final bad = File('${file.path}.bad');
+      if (await bad.exists()) await bad.delete();
+      await file.rename(bad.path);
+      loadErrors.add('$name（已保留为 $name.bad）');
+    } catch (_) {
+      loadErrors.add(name);
+    }
+  }
+
+  /// 原子写入：先写 .tmp 再改名，避免进程被杀时留下半个文件导致读取失败
+  Future<void> _writeAtomic(File file, String content) async {
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsString(content, flush: true);
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+    await tmp.rename(file.path);
   }
 
   /// 读取轻量配置项（存储在 config.json）
@@ -284,6 +316,7 @@ class StorageService {
         _config = decoded;
       }
     } catch (_) {
+      await _quarantine(file);
       _config = {};
     }
   }
@@ -304,6 +337,8 @@ class StorageService {
       final List<dynamic> jsonList = json.decode(content) as List<dynamic>;
       return jsonList.map((e) => fromJson(e as Map<String, dynamic>)).toList();
     } catch (e) {
+      // 读不出来则保留原文件再返回空，交由上层决定是否写默认值
+      await _quarantine(file);
       return [];
     }
   }
@@ -312,7 +347,7 @@ class StorageService {
     final file = File('${_dataDir.path}/$filename');
     final jsonStr =
         json.encode(list.map((e) => (e as dynamic).toJson()).toList());
-    await file.writeAsString(jsonStr);
+    await _writeAtomic(file, jsonStr);
   }
 
   Future<void> saveWorkEntries() async {
@@ -506,7 +541,7 @@ class StorageService {
     } catch (_) {}
     for (final entry in byYear.entries) {
       final file = File('${_dataDir.path}/${prefix}_${entry.key}.json');
-      await file.writeAsString(json.encode(entry.value));
+      await _writeAtomic(file, json.encode(entry.value));
     }
   }
 

@@ -102,6 +102,17 @@ class SyncController extends GetxController with WidgetsBindingObserver {
         LocalBackupService.lastTime == null) {
       LocalBackupService.backupNow().then((_) => _loadLocalBackupState());
     }
+    // 有数据文件读取失败：提示用户（原文件已保留为 .bad，可从备份恢复）
+    if (_storage.loadErrors.isNotEmpty) {
+      Future.delayed(const Duration(seconds: 2), () {
+        Get.snackbar(
+          '检测到数据文件异常',
+          '${_storage.loadErrors.length} 个文件读取失败，原文件已保留；'
+          '如数据缺失，可在「数据备份」里从备份恢复',
+          duration: const Duration(seconds: 8),
+        );
+      });
+    }
     refreshStats();
   }
 
