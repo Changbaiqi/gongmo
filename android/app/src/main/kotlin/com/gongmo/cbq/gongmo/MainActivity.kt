@@ -2,6 +2,7 @@ package com.gongmo.cbq.gongmo
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -48,6 +49,39 @@ class MainActivity : FlutterFragmentActivity() {
                                 val mime = call.argument<String>("mime") ?: "*/*"
                                 result.success(openAttachment(path, mime))
                             }
+                            // 系统分享面板（发送到 QQ / 微信等）
+                            "shareAttachment" -> {
+                                val path = call.argument<String>("path")
+                                val mime = call.argument<String>("mime") ?: "*/*"
+                                result.success(shareAttachment(path, mime))
+                            }
+                            // 导出日志前尽力抓取本应用的 logcat（无权限则忽略）
+                            "dumpLogcat" -> result.success(dumpLogcat())
+                            // 把备份包保存到公共「下载」目录（不随应用数据清理消失）
+                            "saveToDownloads" -> {
+                                val source = call.argument<String>("source")
+                                val name = call.argument<String>("name")
+                                val mime = call.argument<String>("mime")
+                                    ?: "application/octet-stream"
+                                val relativeDir = call.argument<String>("relativeDir")
+                                result.success(saveToDownloads(source, name, mime, relativeDir))
+                            }
+                            // 用系统文件管理器打开公共备份目录
+                            "openFolder" -> {
+                                val relativeDir = call.argument<String>("relativeDir")
+                                result.success(openFolder(relativeDir))
+                            }
+                            // 清理过旧的本地快照（只保留最近几份）
+                            "pruneLocalBackups" ->
+                                result.success(pruneLocalBackups())
+                            // 列出公共备份目录内容（应用内「查看」展示）
+                            "listLocalBackups" ->
+                                result.success(listLocalBackups())
+                            // 删除某个快照目录下的所有文件（重复备份时覆盖用）
+                            "deleteLocalDir" -> {
+                                val relativeDir = call.argument<String>("relativeDir")
+                                result.success(deleteLocalDir(relativeDir))
+                            }
                             else -> result.notImplemented()
                         }
             }
@@ -80,8 +114,6 @@ class MainActivity : FlutterFragmentActivity() {
                                 MenuNotificationService.bumpIfRunning(this)
                                 result.success(true)
                             }
-                            // 导出日志前尽力抓取本应用的 logcat（无权限则忽略）
-                            "dumpLogcat" -> result.success(dumpLogcat())
                             "consumePendingCapture" ->
                                 result.success(ScreenshotStore.consume(this))
                             // 常驻通知菜单按钮动作（冷启动读取并清空）
@@ -199,6 +231,243 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    /**
+     * 把文件保存到公共「下载/<relativeDir>」目录。
+     *
+     * Android 10+ 走 MediaStore（无需任何权限）；旧版本直接写公共 Downloads。
+     * 该目录属于用户存储，清理应用数据或卸载重装都不会被删除。
+     * 返回用户可见路径，失败返回 null。
+     */
+    private fun saveToDownloads(
+        source: String?,
+        name: String?,
+        mime: String,
+        relativeDir: String?
+    ): String? {
+        if (source.isNullOrEmpty() || name.isNullOrEmpty()) return null
+        val src = java.io.File(source)
+        if (!src.exists()) return null
+        val dir = (relativeDir ?: LOCAL_BACKUP_DIR).trim('/')
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
+                    put(
+                        android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                        "${android.os.Environment.DIRECTORY_DOWNLOADS}/$dir"
+                    )
+                    put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val resolver = contentResolver
+                val uri = resolver.insert(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    values
+                ) ?: return null
+                try {
+                    resolver.openOutputStream(uri)?.use { out ->
+                        src.inputStream().use { input -> input.copyTo(out) }
+                    }
+                } catch (e: Exception) {
+                    resolver.delete(uri, null, null)
+                    return null
+                }
+                val done = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                }
+                resolver.update(uri, done, null, null)
+                "下载/$dir/$name"
+            } else {
+                @Suppress("DEPRECATION")
+                val base = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS
+                )
+                val target = java.io.File(base, dir)
+                if (!target.exists()) target.mkdirs()
+                val dst = java.io.File(target, name)
+                src.inputStream().use { input ->
+                    dst.outputStream().use { out -> input.copyTo(out) }
+                }
+                dst.absolutePath
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * 用系统文件管理器打开「下载/工墨数据备份」目录。
+     * 优先用 ExternalStorageProvider 的文档 uri 定位，失败则打开系统下载页。
+     */
+    private fun openFolder(relativeDir: String?): Boolean {
+        val dir = (relativeDir ?: LOCAL_BACKUP_DIR).trim('/')
+        return try {
+            val docId = "primary:${android.os.Environment.DIRECTORY_DOWNLOADS}/$dir"
+            val uri = android.provider.DocumentsContract.buildDocumentUri(
+                "com.android.externalstorage.documents",
+                docId
+            )
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "vnd.android.document/directory")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            true
+        } catch (_: Throwable) {
+            try {
+                startActivity(
+                    Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    /**
+     * 公共目录里只保留最近 [KEEP_LOCAL_BACKUPS] 个快照目录，
+     * 并清理旧格式（直接放在根目录的 .gongmo 包）。
+     */
+    private fun pruneLocalBackups(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        return try {
+            val resolver = contentResolver
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val projection = arrayOf(
+                android.provider.MediaStore.Downloads._ID,
+                android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                android.provider.MediaStore.Downloads.DATE_ADDED
+            )
+            val root = "${android.os.Environment.DIRECTORY_DOWNLOADS}/$LOCAL_BACKUP_DIR/"
+            val folderIds = LinkedHashMap<String, MutableList<Long>>()
+            val folderNewest = HashMap<String, Long>()
+            val rootIds = ArrayList<Long>()
+            resolver.query(
+                collection,
+                projection,
+                null,
+                null,
+                "${android.provider.MediaStore.Downloads.DATE_ADDED} DESC"
+            )?.use { c ->
+                val idIdx = c.getColumnIndexOrThrow(projection[0])
+                val pathIdx = c.getColumnIndexOrThrow(projection[1])
+                val dateIdx = c.getColumnIndexOrThrow(projection[2])
+                while (c.moveToNext()) {
+                    val rel = c.getString(pathIdx) ?: continue
+                    if (!rel.startsWith(root)) continue
+                    val id = c.getLong(idIdx)
+                    val rest = rel.removePrefix(root).trim('/')
+                    if (rest.isEmpty()) {
+                        rootIds.add(id)
+                        continue
+                    }
+                    val folder = rest.substringBefore('/')
+                    folderIds.getOrPut(folder) { ArrayList() }.add(id)
+                    val date = c.getLong(dateIdx)
+                    val cur = folderNewest[folder]
+                    if (cur == null || date > cur) folderNewest[folder] = date
+                }
+            }
+            val sorted = folderIds.keys.sortedByDescending { folderNewest[it] ?: 0L }
+            for (i in KEEP_LOCAL_BACKUPS until sorted.size) {
+                folderIds[sorted[i]]?.forEach { id ->
+                    resolver.delete(
+                        android.content.ContentUris.withAppendedId(collection, id),
+                        null,
+                        null
+                    )
+                }
+            }
+            rootIds.forEach { id ->
+                resolver.delete(
+                    android.content.ContentUris.withAppendedId(collection, id),
+                    null,
+                    null
+                )
+            }
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 列出公共备份目录下的文件（folder 为空表示直接放在根目录的旧版备份） */
+    private fun listLocalBackups(): List<Map<String, Any>> {
+        val out = ArrayList<Map<String, Any>>()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return out
+        return try {
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val projection = arrayOf(
+                android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                android.provider.MediaStore.Downloads.DISPLAY_NAME,
+                android.provider.MediaStore.Downloads.SIZE,
+                android.provider.MediaStore.Downloads.DATE_ADDED
+            )
+            val root = "${android.os.Environment.DIRECTORY_DOWNLOADS}/$LOCAL_BACKUP_DIR/"
+            contentResolver.query(
+                collection,
+                projection,
+                null,
+                null,
+                "${android.provider.MediaStore.Downloads.DATE_ADDED} DESC"
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val rel = c.getString(0) ?: continue
+                    if (!rel.startsWith(root)) continue
+                    val rest = rel.removePrefix(root).trim('/')
+                    out.add(
+                        mapOf(
+                            "folder" to if (rest.isEmpty()) "" else rest.substringBefore('/'),
+                            "name" to (c.getString(1) ?: ""),
+                            "size" to c.getLong(2),
+                            "date" to c.getLong(3)
+                        )
+                    )
+                }
+            }
+            out
+        } catch (_: Throwable) {
+            out
+        }
+    }
+
+    /** 删除某个快照目录下的所有文件（短时间内重复备份时覆盖旧快照） */
+    private fun deleteLocalDir(relativeDir: String?): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        if (relativeDir.isNullOrEmpty()) return false
+        return try {
+            val resolver = contentResolver
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val projection = arrayOf(
+                android.provider.MediaStore.Downloads._ID,
+                android.provider.MediaStore.Downloads.RELATIVE_PATH
+            )
+            val target =
+                "${android.os.Environment.DIRECTORY_DOWNLOADS}/${relativeDir.trim('/')}/"
+            val ids = ArrayList<Long>()
+            resolver.query(collection, projection, null, null, null)?.use { c ->
+                val idIdx = c.getColumnIndexOrThrow(projection[0])
+                val pathIdx = c.getColumnIndexOrThrow(projection[1])
+                while (c.moveToNext()) {
+                    val rel = c.getString(pathIdx) ?: continue
+                    if (rel == target) ids.add(c.getLong(idIdx))
+                }
+            }
+            for (id in ids) {
+                resolver.delete(
+                    android.content.ContentUris.withAppendedId(collection, id),
+                    null,
+                    null
+                )
+            }
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     private fun stopMenuNotification(): Boolean {
         return try {
             stopService(Intent(this, MenuNotificationService::class.java))
@@ -244,29 +513,86 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /** 用系统应用打开附件：FileProvider 生成 content:// URI */
+    /**
+     * 用系统应用打开文件（ACTION_VIEW）。
+     *
+     * 注意：文档目录（app_flutter）不在 FileProvider 的映射根内，
+     * 直接 getUriForFile 会抛异常导致"无法打开"；这里兜底把文件复制到
+     * cache/share（cache-path 已映射）再打开。
+     */
     private fun openAttachment(path: String?, mime: String): Boolean {
-        if (path.isNullOrEmpty()) return false
+        val uri = resolveShareableUri(path) ?: return false
         return try {
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                this,
-                "$packageName.fileprovider",
-                java.io.File(path)
-            )
-            val intent = Intent(Intent.ACTION_VIEW).apply {
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mime)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
+                clipData = android.content.ClipData.newUri(contentResolver, "file", uri)
+            })
             true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
+    }
+
+    /** 分享文件：调起系统分享面板（可发送到 QQ / 微信等） */
+    private fun shareAttachment(path: String?, mime: String): Boolean {
+        val uri = resolveShareableUri(path) ?: return false
+        return try {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                clipData = android.content.ClipData.newUri(contentResolver, "file", uri)
+            }
+            startActivity(Intent.createChooser(send, "发送文件"))
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** 取得可分享的 content uri：文档目录不在 FileProvider 映射内时先复制到 cache/share */
+    private fun resolveShareableUri(path: String?): android.net.Uri? {
+        if (path.isNullOrEmpty()) return null
+        val src = java.io.File(path)
+        if (!src.exists()) return null
+        tryGetUri(src)?.let { return it }
+        val copy = copyToShareCache(src) ?: return null
+        return tryGetUri(copy)
+    }
+
+    private fun tryGetUri(file: java.io.File): android.net.Uri? = try {
+        androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            file
+        )
+    } catch (_: Throwable) {
+        null
+    }
+
+    /** 复制文件到 cache/share（FileProvider 已映射 cache 根） */
+    private fun copyToShareCache(src: java.io.File): java.io.File? = try {
+        val dir = java.io.File(cacheDir, "share")
+        if (!dir.exists()) dir.mkdirs()
+        val dst = java.io.File(dir, src.name)
+        src.inputStream().use { input ->
+            dst.outputStream().use { output -> input.copyTo(output) }
+        }
+        dst
+    } catch (_: Throwable) {
+        null
     }
 
     companion object {
         const val EXTRA_OCR_CAPTURE = "com.gongmo.cbq.gongmo.ocr_capture"
         const val EXTRA_OCR_RETURN = "com.gongmo.cbq.gongmo.ocr_return"
+
+        /** 本地备份的公共目录名（下载目录下） */
+        const val LOCAL_BACKUP_DIR = "工墨数据备份"
+
+        /** 公共目录里最多保留的本地备份份数 */
+        const val KEEP_LOCAL_BACKUPS = 3
 
         /** 常驻通知菜单按钮动作（值如 photo_bookkeeping） */
         const val EXTRA_MENU_ACTION = "com.gongmo.cbq.gongmo.menu_action"

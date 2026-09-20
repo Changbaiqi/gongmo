@@ -229,6 +229,19 @@ class AttachmentService {
     }
   }
 
+  /// 分享任意绝对路径文件：调起系统分享面板（可发送到 QQ / 微信等）
+  Future<bool> shareAbsoluteFile(String absolutePath, {String? mime}) async {
+    try {
+      return await _channel.invokeMethod<bool>('shareAttachment', {
+            'path': absolutePath,
+            'mime': mime ?? 'application/octet-stream',
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   String formatSize(int bytes) {
     if (bytes <= 0) return '';
     if (bytes >= 1024 * 1024) {

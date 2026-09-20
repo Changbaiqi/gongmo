@@ -20,6 +20,7 @@ import '../../data/models/work_entry.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
 import '../../data/services/backup_package_service.dart';
 import '../../data/services/github_sync_service.dart';
+import '../../data/services/local_backup_service.dart';
 import '../../data/services/storage_service.dart';
 import '../../data/services/sync_merge.dart';
 import '../dashboard/dashboard_controller.dart';
@@ -70,6 +71,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
   /// 自动同步开关（持久化到 config.json）
   final autoSync = false.obs;
   Timer? _autoSyncTimer;
+  Timer? _localBackupTimer;
 
   /// 最近一次成功同步时的数据指纹（[StorageService.syncSignature] 的 hashCode），
   /// 用于跳过“数据没变”的重复上传，值为 0 表示尚未同步过。
@@ -94,6 +96,12 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     // 数据落盘 → 防抖后自动备份
     _storage.onDataChanged = _onDataChanged;
     autoSync.value = _storage.getConfig('auto_sync') == true;
+    _loadLocalBackupState();
+    // 本地自动备份默认开启：还没有任何备份时，启动先存一份
+    if (LocalBackupService.autoEnabled &&
+        LocalBackupService.lastTime == null) {
+      LocalBackupService.backupNow().then((_) => _loadLocalBackupState());
+    }
     refreshStats();
   }
 
@@ -102,6 +110,7 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     // 控制器常驻，一般不会触发；仍成对移除监听避免泄漏
     WidgetsBinding.instance.removeObserver(this);
     _autoSyncTimer?.cancel();
+    _localBackupTimer?.cancel();
     super.onClose();
   }
 
@@ -124,8 +133,75 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     if (v) _lastSyncedHash = 0; // 开启后允许下一次数据变动立即同步
   }
 
+  // ---------- 本地备份（不依赖 GitHub，不随应用数据清理消失） ----------
+
+  final localBackupAuto = false.obs;
+  final localBackupLast = Rxn<DateTime>();
+  final localBackupPath = RxnString();
+
+  /// 是否正在本地备份（按钮据此禁用，避免连点产生多份）
+  final localBackupBusy = false.obs;
+
+  void _loadLocalBackupState() {
+    localBackupAuto.value = LocalBackupService.autoEnabled;
+    localBackupLast.value = LocalBackupService.lastTime;
+    localBackupPath.value = LocalBackupService.lastPath;
+  }
+
+  /// 开关自动本地备份：开启时立刻先备份一份
+  Future<void> setLocalBackupAuto(bool v) async {
+    localBackupAuto.value = v;
+    await LocalBackupService.setAuto(v);
+    if (!v) return;
+    final path = await LocalBackupService.backupNow();
+    _loadLocalBackupState();
+    Get.snackbar(
+      path != null ? '已开启本地自动备份' : '本地备份失败',
+      path != null
+          ? '已保存到 $path'
+          : (LocalBackupService.lastError ?? '请检查存储空间后重试'),
+    );
+  }
+
+  /// 手动备份到本地公共目录
+  Future<void> backupToLocal() async {
+    if (localBackupBusy.value) return;
+    localBackupBusy.value = true;
+    try {
+      final path = await LocalBackupService.backupNow();
+      _loadLocalBackupState();
+      final reused = LocalBackupService.lastReused;
+      Get.snackbar(
+        path != null
+            ? (reused ? '已更新本地备份' : '已备份到本地')
+            : '本地备份失败',
+        path != null
+            ? '已保存到 $path'
+            : (LocalBackupService.lastError ?? '请检查存储空间后重试'),
+      );
+    } finally {
+      localBackupBusy.value = false;
+    }
+  }
+
+  /// 用系统文件管理器打开本地备份目录
+  Future<void> openLocalBackupFolder() async {
+    final ok = await LocalBackupService.openFolder();
+    if (!ok) {
+      Get.snackbar('无法打开', '路径：${LocalBackupService.visibleFolder}');
+    }
+  }
+
   void _onDataChanged() {
     _notifyUi(); // 后台自动入账等数据变化时刷新前台界面
+    // 本地备份与 GitHub 无关：没绑定仓库也能自动镜像一份到公共目录
+    if (LocalBackupService.autoEnabled) {
+      _localBackupTimer?.cancel();
+      _localBackupTimer = Timer(const Duration(seconds: 12), () async {
+        await LocalBackupService.autoBackupIfDue();
+        _loadLocalBackupState();
+      });
+    }
     if (!autoSync.value) return;
     // 6 秒防抖：连续写入（如批量导入、合并）只触发最后一次同步；
     // 每次新变更都重置计时，避免同步过程中数据还在变导致上传的是旧快照
@@ -263,16 +339,35 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  /// 导出备份到本地：把整合后的数据按原始分片文件压缩成 `.gongmo` 包。
+  /// 导出备份到本地：把整合后的数据按原始分片文件压缩成 `.gongmo` 包，
+  /// 并保存到手机公共目录「下载 / 工墨导出」。
   ///
-  /// 纯本地导出，不依赖 GitHub 连接；文件名带秒级时间戳避免覆盖。
   /// 包内保留 work_entries_2026.json 等原始文件，导入时可原样还原。
   Future<void> exportPackage() async {
+    String? source;
     try {
-      final path = await BackupPackageService.instance.exportPackage();
-      Get.snackbar('导出成功', '已保存到 $path');
+      // 先在应用内生成包，再复制到公共下载目录（用户可见、不被清理）
+      source = await BackupPackageService.instance.exportPackage();
+      final saved = await LocalBackupService.saveToPublicDownloads(
+        source,
+        relativeDir: LocalBackupService.exportFolder,
+        mime: 'application/gzip',
+      );
+      if (saved == null) {
+        Get.snackbar('导出失败', '写入下载目录失败，请检查存储空间后重试');
+        return;
+      }
+      Get.snackbar('导出成功', '已保存到 $saved');
     } catch (e) {
       Get.snackbar('导出失败', '写入文件失败，请重试');
+    } finally {
+      // 清理应用内的临时包
+      if (source != null) {
+        try {
+          final tmp = File(source);
+          if (await tmp.exists()) await tmp.delete();
+        } catch (_) {}
+      }
     }
   }
 
@@ -305,7 +400,12 @@ class SyncController extends GetxController with WidgetsBindingObserver {
       Get.snackbar('导入失败', '读取文件失败，请重试');
       return;
     }
+    await importFromData(raw);
+  }
 
+  /// 用已解析的备份数据执行导入（供文件选择与本地备份恢复共用）
+  Future<void> importFromData(Map<String, dynamic> raw) async {
+    if (isSyncing.value || isRestoring.value) return;
     const keys = [
       'workEntries',
       'financeEntries',

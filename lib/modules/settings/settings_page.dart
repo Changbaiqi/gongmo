@@ -201,15 +201,25 @@ class SettingsPage extends StatelessWidget {
             },
             child: const Text('复制路径'),
           ),
-          FilledButton(
+          TextButton(
             onPressed: () async {
               final ok = await AttachmentService.instance
                   .openAbsoluteFile(path, mime: 'application/gzip');
               if (!ok) {
-                Get.snackbar('无法打开', '请用「复制路径」在文件管理器中查看');
+                Get.snackbar('无法打开', '没有可打开该文件的应用，可试试「发送」');
               }
             },
-            child: const Text('发送/打开'),
+            child: const Text('打开'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final ok = await AttachmentService.instance
+                  .shareAbsoluteFile(path, mime: 'application/gzip');
+              if (!ok) {
+                Get.snackbar('无法发送', '请在文件管理器中手动分享');
+              }
+            },
+            child: const Text('发送'),
           ),
         ],
       ),

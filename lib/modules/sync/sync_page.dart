@@ -4,15 +4,20 @@
 //       开关、手动备份、云端恢复（二次确认）、本地导出四个操作入口。
 // 关联：SyncController（全部业务逻辑与状态）；页面通过 /sync 路由进入。
 // ============================================================
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'sync_controller.dart';
 import '../../core/widgets/count_up_text.dart';
+import '../../data/services/local_backup_service.dart';
 
-/// GitHub 同步页：无状态页面，状态全部来自 [SyncController]。
+/// 数据备份页：无状态页面，状态全部来自 [SyncController]。
 ///
 /// 用 `busy`（同步中或恢复中）统一禁用操作按钮，防止备份与恢复并发导致
-/// 数据互相覆盖。
+/// 数据互相覆盖。包含「本地备份」（公共下载目录，不依赖 GitHub）与
+/// 「GitHub 同步」两部分。
 class SyncPage extends StatelessWidget {
   const SyncPage({super.key});
 
@@ -23,7 +28,7 @@ class SyncPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('GitHub 同步'),
+        title: const Text('数据备份'),
         centerTitle: true,
       ),
       body: Obx(() {
@@ -35,11 +40,34 @@ class SyncPage extends StatelessWidget {
           children: [
             _Entrance(
               index: 0,
-              child: _buildStatusCard(context, ctrl, cs, connected),
+              child: _buildPathsCard(context, cs),
             ),
             const SizedBox(height: 12),
             _Entrance(
               index: 1,
+              child: _buildLocalCard(context, ctrl, cs, busy),
+            ),
+            const SizedBox(height: 20),
+            _Entrance(
+              index: 2,
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_sync_outlined, size: 16, color: cs.primary),
+                  const SizedBox(width: 6),
+                  const Text('GitHub 同步',
+                      style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            _Entrance(
+              index: 3,
+              child: _buildStatusCard(context, ctrl, cs, connected),
+            ),
+            const SizedBox(height: 12),
+            _Entrance(
+              index: 4,
               child: Card(
                 child: ListTile(
                   leading: _SpinIcon(
@@ -65,12 +93,12 @@ class SyncPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _Entrance(
-              index: 2,
+              index: 5,
               child: _buildStatsCard(context, ctrl, cs),
             ),
             const SizedBox(height: 24),
             _Entrance(
-              index: 3,
+              index: 6,
               child: ElevatedButton.icon(
                 onPressed: busy ? null : () => ctrl.pushToGithub(),
                 icon: ctrl.isSyncing.value
@@ -87,7 +115,7 @@ class SyncPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _Entrance(
-              index: 4,
+              index: 7,
               child: OutlinedButton.icon(
                 onPressed: busy ? null : () => _confirmRestore(context, ctrl),
                 icon: ctrl.isRestoring.value
@@ -103,30 +131,30 @@ class SyncPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _Entrance(
-              index: 5,
+              index: 8,
               child: TextButton.icon(
                 onPressed: busy ? null : () => ctrl.exportPackage(),
                 icon: const Icon(Icons.file_download_outlined, size: 18),
-                label: const Text('导出备份到本地'),
+                label: const Text('导出数据到本地'),
               ),
             ),
             const SizedBox(height: 12),
             _Entrance(
-              index: 6,
+              index: 9,
               child: TextButton.icon(
                 onPressed: busy ? null : () => ctrl.importFromFile(),
                 icon: const Icon(Icons.file_upload_outlined, size: 18),
-                label: const Text('导入备份'),
+                label: const Text('导入本地数据'),
               ),
             ),
             const SizedBox(height: 8),
             _Entrance(
-              index: 7,
+              index: 10,
               child: Text(
                 '备份按年份分片保存在仓库的 gongmo_backup/ 目录；“备份”会先合并云端数据再上传，'
                 '多台设备同时记录也不会互相覆盖；“恢复”会用云端数据覆盖本地，请谨慎操作。'
-                '「导出备份到本地」生成 .gongmo 数据包（压缩的原始分片文件），'
-                '「导入备份」读取该数据包或旧版 JSON，可选择合并（推荐）或覆盖。',
+                '「导出数据到本地」生成 .gongmo 数据包（压缩的原始分片文件），'
+                '「导入本地数据」读取该数据包、快照目录或旧版 JSON，可选择合并（推荐）或覆盖。',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11.5,
@@ -137,6 +165,287 @@ class SyncPage extends StatelessWidget {
           ],
         );
       }),
+    );
+  }
+
+  /// 顶部路径卡片：软件数据目录 + 本地备份目录，都可查看/打开
+  Widget _buildPathsCard(BuildContext context, ColorScheme cs) {
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(Icons.storage_rounded, size: 20, color: cs.primary),
+            title: const Text('软件数据目录',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              LocalBackupService.dataDirPath,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+            ),
+            trailing: TextButton(
+              onPressed: () => _showDataDir(context, cs),
+              child: const Text('查看'),
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading:
+                Icon(Icons.folder_open_rounded, size: 20, color: cs.primary),
+            title: const Text('本地备份目录',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              LocalBackupService.visibleFolder,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+            ),
+            trailing: TextButton(
+              onPressed: () => _showBackupDir(context, cs),
+              child: const Text('查看'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 本地备份目录内容（与「软件数据目录」一致的查看方式，位于公共目录）
+  Future<void> _showBackupDir(BuildContext context, ColorScheme cs) async {
+    final files = await LocalBackupService.listSnapshots();
+    if (!context.mounted) return;
+    final grouped = <String, List<LocalBackupFile>>{};
+    for (final f in files) {
+      grouped.putIfAbsent(f.folder, () => []).add(f);
+    }
+    final folders = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+    final buf = StringBuffer('${LocalBackupService.visibleFolder}/');
+    if (folders.isEmpty) {
+      buf.write('\n\n（还没有备份）');
+    }
+    for (final folder in folders) {
+      buf.write('\n\n${folder.isEmpty ? '(旧版备份)' : folder}/');
+      for (final f in grouped[folder]!) {
+        buf.write(
+            '\n  ${f.name}  (${(f.size / 1024).toStringAsFixed(1)} KB)');
+      }
+    }
+    final path = LocalBackupService.visibleFolder;
+    Get.dialog(
+      AlertDialog(
+        title: const Text('本地备份目录'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 380,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(path, style: TextStyle(fontSize: 11, color: cs.primary)),
+                const SizedBox(height: 10),
+                Text(buf.toString(),
+                    style: const TextStyle(fontSize: 11.5, height: 1.6)),
+                const SizedBox(height: 10),
+                Text(
+                  '每个时间戳目录是一次完整快照（原始分片文件，不打包）；'
+                  '自动备份只保留最近 3 个快照。',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: path));
+              Get.closeCurrentSnackbar();
+              Get.back();
+              Get.snackbar('已复制路径', path);
+            },
+            child: const Text('复制路径'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final ok = await LocalBackupService.openFolder();
+              if (!ok) {
+                Get.snackbar('无法打开', '路径：$path');
+              }
+            },
+            child: const Text('打开目录'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 应用私有数据目录无法被其它应用浏览，这里用应用内列表展示内容
+  Future<void> _showDataDir(BuildContext context, ColorScheme cs) async {
+    final path = LocalBackupService.dataDirPath;
+    var items = '';
+    try {
+      final dir = Directory(path);
+      final entities = dir.listSync()
+        ..sort((a, b) => a.path.compareTo(b.path));
+      final lines = <String>[];
+      for (final e in entities) {
+        if (e is! File) continue;
+        final name = e.uri.pathSegments.last;
+        final size = await e.length();
+        lines.add('$name  (${(size / 1024).toStringAsFixed(1)} KB)');
+      }
+      items = lines.isEmpty ? '（目录为空）' : lines.join('\n');
+    } catch (e) {
+      items = '读取失败：$e';
+    }
+    if (!context.mounted) return;
+    Get.dialog(
+      AlertDialog(
+        title: const Text('软件数据目录'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(path,
+                    style: TextStyle(
+                        fontSize: 11, color: cs.primary)),
+                const SizedBox(height: 10),
+                Text(items,
+                    style: const TextStyle(fontSize: 11.5, height: 1.6)),
+                const SizedBox(height: 10),
+                Text(
+                  '该目录属于应用私有空间，系统文件管理器无法进入；'
+                  '需要外部查看时请用「备份到本地」镜像到公共目录。',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: path));
+              Get.closeCurrentSnackbar();
+              Get.back();
+              Get.snackbar('已复制路径', path);
+            },
+            child: const Text('复制路径'),
+          ),
+          TextButton(onPressed: () => Get.back(), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
+
+  /// 本地备份卡片：不依赖 GitHub，备份到公共下载目录，清理应用数据也不会丢
+  Widget _buildLocalCard(
+      BuildContext context, SyncController ctrl, ColorScheme cs, bool busy) {
+    final last = ctrl.localBackupLast.value;
+    final lastText = last == null
+        ? '还没有本地备份'
+        : '最近备份：${last.month.toString().padLeft(2, '0')}-'
+            '${last.day.toString().padLeft(2, '0')} '
+            '${last.hour.toString().padLeft(2, '0')}:'
+            '${last.minute.toString().padLeft(2, '0')}';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.phone_android_rounded, size: 18, color: cs.primary),
+                const SizedBox(width: 6),
+                const Text('本地备份',
+                    style:
+                        TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                Text(
+                  lastText,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '直接镜像数据目录里的原始文件到手机公共目录「下载 / ${LocalBackupService.folderName} / 时间戳」，'
+              '不打包所以很快；不依赖 GitHub，清理应用数据或重装后依然保留。',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.5,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.85)),
+            ),
+            if (ctrl.localBackupPath.value != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                ctrl.localBackupPath.value!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 10.5,
+                    color: cs.primary.withValues(alpha: 0.9)),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: (busy || ctrl.localBackupBusy.value)
+                        ? null
+                        : () => ctrl.backupToLocal(),
+                    icon: ctrl.localBackupBusy.value
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_alt_rounded, size: 18),
+                    label: const Text('备份到本地'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : () => ctrl.exportPackage(),
+                    icon: const Icon(Icons.archive_outlined, size: 17),
+                    label: const Text('导出本地备份'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Obx(() => SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  secondary: Icon(Icons.autorenew_rounded,
+                      size: 18, color: cs.primary),
+                  title: const Text('自动本地备份',
+                      style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text('每天自动备份一份（数据变动时检查，最快 24 小时一次）',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+                  value: ctrl.localBackupAuto.value,
+                  onChanged: (v) => ctrl.setLocalBackupAuto(v),
+                )),
+          ],
+        ),
+      ),
     );
   }
 

@@ -71,6 +71,48 @@ class BackupPackageService {
     return file.path;
   }
 
+  /// 数据目录里的原始分片文件名（跳过临时队列）
+  List<String> dataFileNames() {
+    final dir = StorageService().dataDir;
+    final out = <String>[];
+    for (final entity in dir.listSync()) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last;
+      if (_excluded.contains(name)) continue;
+      out.add(name);
+    }
+    return out;
+  }
+
+  /// 读取数据目录里的原始分片文件内容（config 会剔除密钥）
+  Future<String?> readSanitized(String name) async {
+    try {
+      final file = File('${StorageService().dataDir.path}/$name');
+      if (!await file.exists()) return null;
+      final content = await file.readAsString();
+      return name == AppConstants.configFile ? _sanitizeConfig(content) : content;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 读取一个「快照目录」里的原始分片文件并合并（本地备份恢复用）
+  Future<Map<String, dynamic>?> readBackupDir(Directory dir) async {
+    try {
+      final files = <String, String>{};
+      for (final entity in dir.listSync()) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (!name.endsWith('.json')) continue;
+        files[name] = await entity.readAsString();
+      }
+      if (files.isEmpty) return null;
+      return mergeRawFiles(files);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 读取备份文件（.gongmo 包或旧版 .json 导出），返回可供
   /// [StorageService.mergeRemoteData] / [StorageService.restoreAllData]
   /// 使用的数据；无法识别时返回 null。
@@ -91,6 +133,18 @@ class BackupPackageService {
   /// 解包 .gongmo：按原始分片文件还原各记录列表与预算配置
   Map<String, dynamic> _readPackage(List<int> bytes) {
     final archive = ZipDecoder().decodeBytes(bytes);
+    final files = <String, String>{};
+    for (final f in archive) {
+      if (!f.isFile) continue;
+      final name = f.name;
+      if (name == _metaName) continue;
+      files[name] = utf8.decode(f.content, allowMalformed: true);
+    }
+    return mergeRawFiles(files);
+  }
+
+  /// 合并「文件名 → 内容」的原始分片数据为统一结构（包/目录两种来源共用）
+  static Map<String, dynamic> mergeRawFiles(Map<String, String> files) {
     final work = <dynamic>[];
     final finance = <dynamic>[];
     final categories = <dynamic>[];
@@ -100,13 +154,11 @@ class BackupPackageService {
     Map<String, dynamic>? config;
     Map<String, dynamic>? tombstones;
 
-    for (final f in archive) {
-      if (!f.isFile) continue;
-      final name = f.name;
-      if (name == _metaName) continue;
+    for (final entry in files.entries) {
+      final name = entry.key;
       final dynamic decoded;
       try {
-        decoded = jsonDecode(utf8.decode(f.content, allowMalformed: true));
+        decoded = jsonDecode(entry.value);
       } catch (_) {
         continue;
       }
