@@ -80,6 +80,8 @@ class MainActivity : FlutterFragmentActivity() {
                                 MenuNotificationService.bumpIfRunning(this)
                                 result.success(true)
                             }
+                            // 导出日志前尽力抓取本应用的 logcat（无权限则忽略）
+                            "dumpLogcat" -> result.success(dumpLogcat())
                             "consumePendingCapture" ->
                                 result.success(ScreenshotStore.consume(this))
                             // 常驻通知菜单按钮动作（冷启动读取并清空）
@@ -169,6 +171,30 @@ class MainActivity : FlutterFragmentActivity() {
             )
             true
         } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * 尽力导出一份本应用的 logcat 到 files/logs/logcat.txt。
+     * 普通应用只能读到自身进程日志，读不到或命令不可用时返回 false。
+     */
+    private fun dumpLogcat(): Boolean {
+        return try {
+            val dir = java.io.File(filesDir, "logs")
+            if (!dir.exists()) dir.mkdirs()
+            val out = java.io.File(dir, "logcat.txt")
+            val process = ProcessBuilder("logcat", "-d", "-v", "time")
+                .redirectErrorStream(true)
+                .start()
+            process.inputStream.use { input ->
+                out.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            process.waitFor()
+            out.length() > 0
+        } catch (_: Throwable) {
             false
         }
     }

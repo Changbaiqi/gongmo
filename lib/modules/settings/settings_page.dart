@@ -16,8 +16,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/theme_controller.dart';
+import '../../data/services/app_log_service.dart';
+import '../../data/services/attachment_service.dart';
 import '../../data/services/auto_bookkeeping_service.dart';
-import '../../data/services/crash_log_service.dart';
 import '../../data/services/github_sync_service.dart';
 import '../../data/services/keep_alive_service.dart';
 import '../../data/services/reminder_service.dart';
@@ -134,12 +135,12 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.bug_report_outlined),
-                  title: const Text('崩溃日志'),
-                  subtitle: const Text('闪退排查用，可复制反馈',
+                  leading: const Icon(Icons.folder_zip_outlined),
+                  title: const Text('日志收集（近 5 小时）'),
+                  subtitle: const Text('收集全部运行日志，打包成 tar.gz 便于反馈',
                       style: TextStyle(fontSize: 11.5)),
                   trailing: const Icon(Icons.chevron_right, size: 18),
-                  onTap: () => _showCrashLog(context),
+                  onTap: () => _exportLogs(context),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -156,47 +157,60 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  /// 显示崩溃日志（无记录时提示），支持一键复制/清空
-  Future<void> _showCrashLog(BuildContext context) async {
-    final content = await CrashLogService.read();
+  /// 收集近 5 小时日志并打包成 tar.gz，弹窗提供打开/复制/清空
+  Future<void> _exportLogs(BuildContext context) async {
+    Get.closeCurrentSnackbar();
+    final path = await AppLogService.exportToTarGz();
     if (!context.mounted) return;
-    if (content.trim().isEmpty) {
-      Get.snackbar('暂无崩溃记录', '最近没有捕获到闪退日志');
+    if (path == null) {
+      Get.snackbar('导出失败', '日志打包失败，请重试');
       return;
     }
+    var sizeText = '';
+    try {
+      sizeText = '${(await File(path).length() / 1024).toStringAsFixed(1)} KB';
+    } catch (_) {}
     Get.dialog(
       AlertDialog(
-        title: const Text('崩溃日志'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 380,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              content,
-              style: const TextStyle(fontSize: 11, height: 1.4),
-            ),
-          ),
+        title: const Text('日志已打包'),
+        content: Text(
+          '已收集近 5 小时的全部日志：\n'
+          '· app.log（运行日志）\n'
+          '· logcat.txt（系统日志，如有）\n'
+          '· crash_log.txt（崩溃记录，如有）\n'
+          '· device_info.txt（设备与版本信息）\n\n'
+          '$path${sizeText.isEmpty ? '' : '\n大小 $sizeText'}',
+          style: const TextStyle(fontSize: 12.5, height: 1.6),
         ),
         actions: [
           TextButton(
             onPressed: () async {
-              await CrashLogService.clear();
+              await AppLogService.clear();
               Get.closeCurrentSnackbar();
               Get.back();
-              Get.snackbar('已清空', '崩溃日志已删除');
+              Get.snackbar('已清空', '日志文件已删除');
             },
-            child: const Text('清空'),
+            child: const Text('清空日志'),
           ),
           TextButton(
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: content));
+              Clipboard.setData(ClipboardData(text: path));
               Get.closeCurrentSnackbar();
               Get.back();
-              Get.snackbar('已复制', '把内容粘贴给开发者即可');
+              Get.snackbar('已复制路径', '可粘贴到文件管理器或聊天窗口');
             },
-            child: const Text('复制'),
+            child: const Text('复制路径'),
           ),
-          TextButton(onPressed: () => Get.back(), child: const Text('关闭')),
+          FilledButton(
+            onPressed: () async {
+              final ok = await AttachmentService.instance
+                  .openAbsoluteFile(path, mime: 'application/gzip');
+              if (!ok) {
+                Get.snackbar('无法打开', '请用「复制路径」在文件管理器中查看');
+              }
+            },
+            child: const Text('发送/打开'),
+          ),
         ],
       ),
     );

@@ -216,6 +216,19 @@ class AttachmentService {
     }
   }
 
+  /// 用系统应用打开任意绝对路径文件（如导出的日志 tar.gz）
+  Future<bool> openAbsoluteFile(String absolutePath, {String? mime}) async {
+    try {
+      return await _channel.invokeMethod<bool>('openAttachment', {
+            'path': absolutePath,
+            'mime': mime ?? 'application/octet-stream',
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   String formatSize(int bytes) {
     if (bytes <= 0) return '';
     if (bytes >= 1024 * 1024) {
