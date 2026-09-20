@@ -18,11 +18,17 @@ class ReminderService {
 
   static const _notifId = 1001;
   static const _testNotifId = 1002;
-  static const _channelId = 'daily_bookkeeping_reminder_v2';
 
-  /// 旧频道：部分 ROM（如 MIUI）会把旧频道自动降级/折叠，
+  /// 当前提醒频道：显式设置系统默认提示音（频道声音创建后不可修改，
+  /// 因此每次调整都要换新 ID）
+  static const _channelId = 'daily_bookkeeping_reminder_v3';
+
+  /// 旧频道：部分 ROM（如 MIUI）会把旧频道自动降级/静默，
   /// 初始化时删除，改用新频道让系统重新识别
-  static const _legacyChannelId = 'daily_bookkeeping_reminder';
+  static const _legacyChannels = [
+    'daily_bookkeeping_reminder',
+    'daily_bookkeeping_reminder_v2',
+  ];
   static const _kEnabled = 'reminder_enabled';
   static const _kHour = 'reminder_hour';
   static const _kMinute = 'reminder_minute';
@@ -63,11 +69,18 @@ class ReminderService {
           channelShowBadge: true,
           visibility: NotificationVisibility.public,
           ticker: '记得记账',
+          // 显式使用系统默认提示音：频道声音只在创建时生效，
+          // 不指定时部分 ROM 会建成"静默频道"，到点只弹通知不响铃
+          sound: UriAndroidNotificationSound(
+              'content://settings/system/notification_sound'),
+          playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.notification,
           styleInformation: BigTextStyleInformation(
             '今天还没有记录账目，花一分钟记一笔吧',
           ),
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(sound: 'default'),
       );
 
   /// 初始化通知插件与时区数据（幂等）
@@ -81,10 +94,12 @@ class ReminderService {
         const InitializationSettings(android: android, iOS: ios),
       );
     } catch (_) {}
-    // 清理旧的提醒频道（其分类可能已被系统自动降级）
-    try {
-      await _android?.deleteNotificationChannel(_legacyChannelId);
-    } catch (_) {}
+    // 清理旧的提醒频道（其声音设置无法修改，只能重建）
+    for (final id in _legacyChannels) {
+      try {
+        await _android?.deleteNotificationChannel(id);
+      } catch (_) {}
+    }
     _initialized = true;
   }
 
