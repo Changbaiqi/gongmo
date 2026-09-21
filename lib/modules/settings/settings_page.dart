@@ -1441,6 +1441,9 @@ class _ReminderCardState extends State<_ReminderCard> {
   /// 精确闹钟是否已授权（未授权时小米等 ROM 可能明显延迟提醒）
   bool _exactOk = true;
 
+  /// 通知声音自检结果：null 表示未检查/不可用
+  ({bool channelExists, bool hasSound, bool miuiSoundEnabled})? _soundState;
+
   @override
   void initState() {
     super.initState();
@@ -1448,6 +1451,12 @@ class _ReminderCardState extends State<_ReminderCard> {
     _hour = _reminder.hour;
     _minute = _reminder.minute;
     _refreshExact();
+    _refreshSoundState();
+  }
+
+  Future<void> _refreshSoundState() async {
+    final state = await _reminder.soundState();
+    if (mounted) setState(() => _soundState = state);
   }
 
   Future<void> _refreshExact() async {
@@ -1569,6 +1578,30 @@ class _ReminderCardState extends State<_ReminderCard> {
                 Get.snackbar('已安排测试提醒', '1 分钟后会收到一条通知，请注意查收');
               },
             ),
+            // 声音自检：只有异常时才提示，避免干扰
+            if (_soundState != null &&
+                !(_soundState!.hasSound && _soundState!.miuiSoundEnabled)) ...[
+              const Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.volume_off_rounded, color: cs.error),
+                title: const Text('提醒没有声音？'),
+                subtitle: Text(
+                  !_soundState!.miuiSoundEnabled
+                      ? '系统已关闭本应用的通知声音，点此去开启'
+                      : '提醒频道未配置提示音，点此去设置',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+                ),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () async {
+                  await _reminder.openNotificationSettings();
+                  // 从系统设置返回后重新自检
+                  await Future.delayed(const Duration(milliseconds: 400));
+                  await _refreshSoundState();
+                },
+              ),
+            ],
             if (!_exactOk) ...[
               const Divider(height: 1),
               ListTile(

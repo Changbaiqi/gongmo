@@ -5,6 +5,7 @@
 //       设置页与 main.dart 启动时确保调度存在
 // ============================================================
 
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
@@ -19,16 +20,11 @@ class ReminderService {
   static const _notifId = 1001;
   static const _testNotifId = 1002;
 
-  /// 当前提醒频道：显式设置系统默认提示音（频道声音创建后不可修改，
-  /// 因此每次调整都要换新 ID）
-  static const _channelId = 'daily_bookkeeping_reminder_v3';
+  /// 当前提醒频道（与原生 MainActivity.REMINDER_CHANNEL_ID 保持一致）
+  static const _channelId = 'daily_bookkeeping_reminder_v4';
 
-  /// 旧频道：部分 ROM（如 MIUI）会把旧频道自动降级/静默，
-  /// 初始化时删除，改用新频道让系统重新识别
-  static const _legacyChannels = [
-    'daily_bookkeeping_reminder',
-    'daily_bookkeeping_reminder_v2',
-  ];
+  /// 内置提示音资源（android/app/src/main/res/raw/gongmo_reminder.wav）
+  static const _soundName = 'gongmo_reminder';
   static const _kEnabled = 'reminder_enabled';
   static const _kHour = 'reminder_hour';
   static const _kMinute = 'reminder_minute';
@@ -69,13 +65,14 @@ class ReminderService {
           channelShowBadge: true,
           visibility: NotificationVisibility.public,
           ticker: '记得记账',
-          // 显式使用系统默认提示音：频道声音只在创建时生效，
-          // 不指定时部分 ROM 会建成"静默频道"，到点只弹通知不响铃
-          sound: UriAndroidNotificationSound(
-              'content://settings/system/notification_sound'),
+          // 用应用内置提示音资源：系统默认音 URI 在 MIUI 上不会被写入频道
+          sound: RawResourceAndroidNotificationSound(_soundName),
           playSound: true,
           enableVibration: true,
           audioAttributesUsage: AudioAttributesUsage.notification,
+          // 关键：避免被系统自动分组（AUTOGROUP_SUMMARY）静音，
+          // 否则提醒会排在常驻菜单通知的同一组里而不响
+          groupAlertBehavior: GroupAlertBehavior.children,
           styleInformation: BigTextStyleInformation(
             '今天还没有记录账目，花一分钟记一笔吧',
           ),
@@ -87,6 +84,12 @@ class ReminderService {
   Future<void> init() async {
     if (_initialized) return;
     await ensureTimezonesInitialized();
+    // 先由原生创建提醒频道：用资源 ID 指定内置提示音，
+    // 避免 release 构建资源名混淆导致频道创建失败、通知发不出来
+    try {
+      await const MethodChannel('com.gongmo.cbq.gongmo/settings')
+          .invokeMethod<bool>('ensureReminderChannel');
+    } catch (_) {}
     const android = AndroidInitializationSettings(_smallIcon);
     const ios = DarwinInitializationSettings();
     try {
@@ -94,12 +97,6 @@ class ReminderService {
         const InitializationSettings(android: android, iOS: ios),
       );
     } catch (_) {}
-    // 清理旧的提醒频道（其声音设置无法修改，只能重建）
-    for (final id in _legacyChannels) {
-      try {
-        await _android?.deleteNotificationChannel(id);
-      } catch (_) {}
-    }
     _initialized = true;
   }
 
@@ -177,6 +174,34 @@ class ReminderService {
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } catch (_) {}
+  }
+
+  /// 提醒声音自检：频道是否存在且有声音、小米「允许声音」是否开启
+  Future<({bool channelExists, bool hasSound, bool miuiSoundEnabled})?>
+      soundState() async {
+    try {
+      final raw = await const MethodChannel('com.gongmo.cbq.gongmo/settings')
+          .invokeMethod<Map<dynamic, dynamic>>('reminderSoundState');
+      if (raw == null) return null;
+      return (
+        channelExists: raw['channelExists'] == true,
+        hasSound: raw['hasSound'] == true,
+        miuiSoundEnabled: raw['miuiSoundEnabled'] != false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 打开本应用的通知设置页（MIUI 的「允许声音」开关在此页）
+  Future<bool> openNotificationSettings() async {
+    try {
+      return await const MethodChannel('com.gongmo.cbq.gongmo/settings')
+              .invokeMethod<bool>('openNotificationSettings') ??
+          false;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// 立即发一条测试通知，用于确认通知权限与渠道是否正常

@@ -55,6 +55,28 @@ class MainActivity : FlutterFragmentActivity() {
                                 val mime = call.argument<String>("mime") ?: "*/*"
                                 result.success(shareAttachment(path, mime))
                             }
+                            // 创建/校正每日提醒频道（用资源 ID 指定内置提示音）
+                            "ensureReminderChannel" ->
+                                result.success(ensureReminderChannel())
+                            // 提醒声音状态：频道是否有声音 + 小米「允许声音」开关
+                            "reminderSoundState" ->
+                                result.success(reminderSoundState())
+                            // 打开本应用的通知设置（MIUI 的「允许声音」在此页）
+                            "openNotificationSettings" -> {
+                                try {
+                                    startActivity(
+                                        Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                            .putExtra(
+                                                android.provider.Settings.EXTRA_APP_PACKAGE,
+                                                packageName
+                                            )
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                    result.success(true)
+                                } catch (_: Throwable) {
+                                    result.success(false)
+                                }
+                            }
                             // 导出日志前尽力抓取本应用的 logcat（无权限则忽略）
                             "dumpLogcat" -> result.success(dumpLogcat())
                             // 把备份包保存到公共「下载」目录（不随应用数据清理消失）
@@ -480,6 +502,93 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    /**
+     * 创建/校正「每日记账提醒」频道。
+     *
+     * release 构建会混淆资源名，`android.resource://包名/raw/xxx` 这种按名字
+     * 取音频的 uri 会解析失败导致通知发不出来；这里用编译期资源 ID
+     * （R.raw.gongmo_reminder）生成 uri，稳定可用。
+     * 频道已存在时该调用不会覆盖用户手动改过的设置。
+     */
+    private fun ensureReminderChannel(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            val channel = android.app.NotificationChannel(
+                REMINDER_CHANNEL_ID,
+                "每日记账提醒",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "每天定时提醒记录收支"
+                enableVibration(true)
+                setShowBadge(true)
+                val attrs = android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                    .build()
+                setSound(
+                    android.net.Uri.parse(
+                        "android.resource://$packageName/${R.raw.gongmo_reminder}"
+                    ),
+                    attrs
+                )
+            }
+            nm.createNotificationChannel(channel)
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 提醒频道的状态：{channelExists, hasSound, miuiSoundEnabled} */
+    private fun reminderSoundState(): Map<String, Any> {
+        val out = HashMap<String, Any>()
+        var exists = false
+        var hasSound = true
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val ch = getSystemService(android.app.NotificationManager::class.java)
+                    .getNotificationChannel(REMINDER_CHANNEL_ID)
+                exists = ch != null
+                hasSound = ch?.sound != null
+            }
+        } catch (_: Throwable) {
+        }
+        out["channelExists"] = exists
+        out["hasSound"] = hasSound
+        out["miuiSoundEnabled"] = isMiuiNotificationSoundOn()
+        return out
+    }
+
+    /**
+     * 小米 ROM 的应用通知声音总开关（字段缺失时视为开启，避免误报）。
+     * MIUI 13 / 澎湃 OS：mi_notification_sound_enable；MIUI 12-：notification_sound_enabled。
+     */
+    private fun isMiuiNotificationSoundOn(): Boolean {
+        return try {
+            val isMiui = try {
+                val clz = Class.forName("android.os.SystemProperties")
+                val get = clz.getMethod("get", String::class.java, String::class.java)
+                (get.invoke(null, "ro.miui.ui.version.name", "") as String).isNotEmpty()
+            } catch (_: Throwable) {
+                false
+            }
+            if (!isMiui) return true
+            val resolver = contentResolver
+            val state = android.provider.Settings.Secure.getInt(
+                resolver,
+                "mi_notification_sound_enable",
+                android.provider.Settings.Secure.getInt(
+                    resolver,
+                    "notification_sound_enabled",
+                    1
+                )
+            )
+            state == 1
+        } catch (_: Throwable) {
+            true
+        }
+    }
+
     private fun stopMenuNotification(): Boolean {
         return try {
             stopService(Intent(this, MenuNotificationService::class.java))
@@ -602,6 +711,9 @@ class MainActivity : FlutterFragmentActivity() {
 
         /** 本地备份的公共目录名（下载目录下） */
         const val LOCAL_BACKUP_DIR = "工墨数据备份"
+
+        /** 每日记账提醒的通知频道（与 Dart 侧保持一致） */
+        const val REMINDER_CHANNEL_ID = "daily_bookkeeping_reminder_v4"
 
         /** 公共目录里最多保留的本地备份份数 */
         const val KEEP_LOCAL_BACKUPS = 3
