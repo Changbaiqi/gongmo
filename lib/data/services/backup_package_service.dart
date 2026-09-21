@@ -197,6 +197,8 @@ class BackupPackageService {
     };
     if (tombstones != null) result['tombstones'] = tombstones;
     if (config != null) {
+      // 完整配置随包带入：导入时可选择恢复开关设置（密钥已在导出时剔除）
+      result['config'] = config;
       if (config['budgets'] != null) result['budgets'] = config['budgets'];
       if (config['total_budget'] != null) {
         result['totalBudget'] = config['total_budget'];

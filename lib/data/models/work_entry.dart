@@ -5,6 +5,8 @@
 //       WorkController（创建/更新）、WorkStatsController（统计）
 // ============================================================
 
+import '../../core/utils/safe_json.dart';
+
 /// 记录状态。
 /// inProgress=进行中（设计上同时最多一条）；completed=已完成；
 /// settled=已结算（预留历史状态，当前流程结束时直接置 completed）
@@ -86,21 +88,22 @@ class WorkEntry {
     final name = json['projectName'] as String? ?? '';
     return WorkEntry(
       id: json['id'] as String,
-      startTime: DateTime.parse(json['startTime'] as String),
+      // 时间字段容错：旧数据缺字段时用兜底时间，避免整条/整份数据解析失败
+      startTime: safeDate(json['startTime'], fallback: DateTime.now()),
       endTime: json['endTime'] != null
-          ? DateTime.parse(json['endTime'] as String)
+          ? safeDate(json['endTime'])
           : null,
       projectName: name,
       description: json['description'] as String? ?? '',
       hourlyRate: (json['hourlyRate'] as num?)?.toDouble() ?? 0,
       income: (json['income'] as num?)?.toDouble(),
       financeEntryId: json['financeEntryId'] as String?,
-      status: WorkStatus.values[json['status'] as int? ?? 0],
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      status: _statusAt(json['status']),
+      createdAt: safeDate(json['createdAt'], fallback: DateTime.now()),
+      updatedAt: safeDate(json['updatedAt'], fallback: DateTime.now()),
       accumulatedSeconds: (json['accumulatedSeconds'] as num?)?.toInt() ?? 0,
       pausedAt: json['pausedAt'] != null
-          ? DateTime.parse(json['pausedAt'] as String)
+          ? safeDate(json['pausedAt'])
           : null,
       mode: json['mode'] as String? ?? (name == '打卡' ? 'clock' : 'timer'),
     );
@@ -123,6 +126,13 @@ class WorkEntry {
       'pausedAt': pausedAt?.toIso8601String(),
       'mode': mode,
     };
+  }
+
+  /// 容错的状态解析：越界或缺失时按“已完成”处理
+  static WorkStatus _statusAt(dynamic value) {
+    final i = safeInt(value);
+    if (i < 0 || i >= WorkStatus.values.length) return WorkStatus.completed;
+    return WorkStatus.values[i];
   }
 
   /// 复制并修改字段；[clearPausedAt] 用于显式清除暂停态

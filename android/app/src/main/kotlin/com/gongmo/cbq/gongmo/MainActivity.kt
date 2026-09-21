@@ -77,6 +77,18 @@ class MainActivity : FlutterFragmentActivity() {
                             // 列出公共备份目录内容（应用内「查看」展示）
                             "listLocalBackups" ->
                                 result.success(listLocalBackups())
+                            // 公共备份目录的绝对路径（读取快照恢复用）
+                            "localBackupDirPath" -> {
+                                @Suppress("DEPRECATION")
+                                val base =
+                                    android.os.Environment.getExternalStorageDirectory()
+                                result.success(
+                                    java.io.File(
+                                        base,
+                                        "${android.os.Environment.DIRECTORY_DOWNLOADS}/$LOCAL_BACKUP_DIR"
+                                    ).absolutePath
+                                )
+                            }
                             // 删除某个快照目录下的所有文件（重复备份时覆盖用）
                             "deleteLocalDir" -> {
                                 val relativeDir = call.argument<String>("relativeDir")

@@ -40,7 +40,7 @@ class SyncPage extends StatelessWidget {
           children: [
             _Entrance(
               index: 0,
-              child: _buildPathsCard(context, cs),
+              child: _buildPathsCard(context, cs, ctrl),
             ),
             const SizedBox(height: 12),
             _Entrance(
@@ -169,7 +169,8 @@ class SyncPage extends StatelessWidget {
   }
 
   /// 顶部路径卡片：软件数据目录 + 本地备份目录，都可查看/打开
-  Widget _buildPathsCard(BuildContext context, ColorScheme cs) {
+  Widget _buildPathsCard(
+      BuildContext context, ColorScheme cs, SyncController ctrl) {
     return Card(
       child: Column(
         children: [
@@ -203,7 +204,7 @@ class SyncPage extends StatelessWidget {
                   color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
             ),
             trailing: TextButton(
-              onPressed: () => _showBackupDir(context, cs),
+              onPressed: () => _showBackupDir(context, cs, ctrl),
               child: const Text('查看'),
             ),
           ),
@@ -213,7 +214,8 @@ class SyncPage extends StatelessWidget {
   }
 
   /// 本地备份目录内容（与「软件数据目录」一致的查看方式，位于公共目录）
-  Future<void> _showBackupDir(BuildContext context, ColorScheme cs) async {
+  Future<void> _showBackupDir(
+      BuildContext context, ColorScheme cs, SyncController ctrl) async {
     final files = await LocalBackupService.listSnapshots();
     if (!context.mounted) return;
     final grouped = <String, List<LocalBackupFile>>{};
@@ -278,6 +280,14 @@ class SyncPage extends StatelessWidget {
               }
             },
             child: const Text('打开目录'),
+          ),
+          TextButton(
+            onPressed: () {
+              Get.closeCurrentSnackbar();
+              Get.back();
+              ctrl.restoreFromLatestSnapshot();
+            },
+            child: const Text('从最新快照恢复'),
           ),
         ],
       ),

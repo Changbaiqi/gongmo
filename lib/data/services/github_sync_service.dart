@@ -40,6 +40,9 @@ class GithubSyncService {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
   static const _tokenKey = 'github_token';
+
+  /// 仓库地址在安全存储中的副本（config.json 丢失时的兜底）
+  static const _repoKey = 'github_repo';
   static const _backupDir = 'gongmo_backup';
 
   final StorageService _storage = StorageService();
@@ -70,11 +73,29 @@ class GithubSyncService {
     return RegExp(r'^(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)').hasMatch(token);
   }
 
-  Future<String> getRepoUrl() async =>
-      (_storage.getConfig('github_repo') as String?) ?? '';
+  /// 仓库地址：配置里没有时回退到安全存储里的副本，
+  /// 避免 config.json 异常导致“显示未绑定仓库”
+  Future<String> getRepoUrl() async {
+    final fromConfig = (_storage.getConfig('github_repo') as String?) ?? '';
+    if (fromConfig.isNotEmpty) return fromConfig;
+    try {
+      return await _secure.read(key: _repoKey) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
 
-  Future<void> saveRepoUrl(String repo) =>
-      _storage.setConfig('github_repo', repo);
+  Future<void> saveRepoUrl(String repo) async {
+    await _storage.setConfig('github_repo', repo);
+    // 同步一份到安全存储：与 Token 一起保存，配置丢失也能恢复绑定
+    try {
+      if (repo.isEmpty) {
+        await _secure.delete(key: _repoKey);
+      } else {
+        await _secure.write(key: _repoKey, value: repo);
+      }
+    } catch (_) {}
+  }
 
   Future<String> getToken() async =>
       sanitizeToken(await _secure.read(key: _tokenKey) ?? '');

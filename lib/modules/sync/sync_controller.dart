@@ -195,6 +195,17 @@ class SyncController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  /// 从最新一份本地快照恢复（数据丢失后的兜底，复用合并/覆盖确认框）
+  Future<void> restoreFromLatestSnapshot() async {
+    final raw = await LocalBackupService.readLatestSnapshot();
+    if (raw == null) {
+      Get.closeCurrentSnackbar();
+      Get.snackbar('没有可用快照', '未找到本地备份快照，可尝试从 GitHub 恢复');
+      return;
+    }
+    await importFromData(raw);
+  }
+
   /// 用系统文件管理器打开本地备份目录
   Future<void> openLocalBackupFolder() async {
     final ok = await LocalBackupService.openFolder();
@@ -461,12 +472,27 @@ class SyncController extends GetxController with WidgetsBindingObserver {
           final total = double.tryParse('${raw['totalBudget'] ?? 0}') ?? 0;
           if (bMap.isNotEmpty || total > 0) dc.restoreBudgets(bMap, total);
         } catch (_) {}
+        // 覆盖导入：连开关设置一起还原（密钥不在包内）
+        if (raw['config'] is Map) {
+          try {
+            await _storage.replaceConfig(
+                Map<String, dynamic>.from(raw['config'] as Map));
+          } catch (_) {}
+        }
         changed = true;
       } else {
         changed = await _storage.mergeRemoteData(raw);
+        // 合并导入：只补齐本地缺失的配置项，不覆盖现有设置
+        if (raw['config'] is Map) {
+          try {
+            await _storage.mergeConfigMissing(
+                Map<String, dynamic>.from(raw['config'] as Map));
+          } catch (_) {}
+        }
       }
       _lastSyncedHash = 0; // 数据已变化，允许下一次自动备份重新上传
       _refreshAllControllers();
+      _loadLocalBackupState();
       refreshStats();
       Get.snackbar(
         changed ? '导入完成' : '没有新数据',

@@ -231,6 +231,28 @@ class LocalBackupService {
     }
   }
 
+  /// 读取最新一份快照的原始数据（数据丢失后的兜底恢复）
+  static Future<Map<String, dynamic>?> readLatestSnapshot() async {
+    try {
+      final dirPath =
+          await _channel.invokeMethod<String>('localBackupDirPath');
+      if (dirPath == null || dirPath.isEmpty) return null;
+      final files = await listSnapshots();
+      final folders = files
+          .where((f) => f.folder.isNotEmpty)
+          .map((f) => f.folder)
+          .toSet()
+          .toList()
+        ..sort((a, b) => b.compareTo(a)); // 时间戳目录名可直接比较大小
+      if (folders.isEmpty) return null;
+      final dir = Directory('$dirPath/${folders.first}');
+      if (!await dir.exists()) return null;
+      return await BackupPackageService.instance.readBackupDir(dir);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 列出公共备份目录里的文件（按快照目录分组展示用）
   static Future<List<LocalBackupFile>> listSnapshots() async {
     try {

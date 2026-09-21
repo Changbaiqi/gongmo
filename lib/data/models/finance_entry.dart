@@ -5,6 +5,8 @@
 //       FinanceController（增删改）、StatsController（统计）
 // ============================================================
 
+import '../../core/utils/safe_json.dart';
+
 /// 账目类型；transfer=转账（预留，当前 UI 仅支持收入/支出）
 enum FinanceType { income, expense, transfer }
 
@@ -66,20 +68,28 @@ class FinanceEntry {
   factory FinanceEntry.fromJson(Map<String, dynamic> json) {
     return FinanceEntry(
       id: json['id'] as String,
-      type: FinanceType.values[json['type'] as int? ?? 0],
-      amount: (json['amount'] as num).toDouble(),
+      type: _typeAt(json['type']),
+      amount: safeDouble(json['amount']),
       categoryId: json['categoryId'] as String? ?? '',
       description: json['description'] as String? ?? '',
       workEntryId: json['workEntryId'] as String?,
       accountId: json['accountId'] as String?,
       notificationSrc: json['notificationSrc'] as String?,
-      date: DateTime.parse(json['date'] as String),
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      // 时间字段容错：旧数据缺字段时用兜底时间，避免整条/整份数据解析失败
+      date: safeDate(json['date'], fallback: DateTime.now()),
+      createdAt: safeDate(json['createdAt'], fallback: DateTime.now()),
+      updatedAt: safeDate(json['updatedAt'], fallback: DateTime.now()),
       tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
       attachmentPaths:
           (json['attachmentPaths'] as List<dynamic>?)?.cast<String>() ?? [],
     );
+  }
+
+  /// 容错类型解析：越界或缺失时按支出处理
+  static FinanceType _typeAt(dynamic value) {
+    final i = safeInt(value);
+    if (i < 0 || i >= FinanceType.values.length) return FinanceType.expense;
+    return FinanceType.values[i];
   }
 
   Map<String, dynamic> toJson() {

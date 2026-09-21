@@ -161,8 +161,17 @@ class StorageService {
     _saveTombstones();
   }
 
+  /// 配置备份文件名：保存时保留上一版，损坏/被清空时可回退
+  static const _configBackupFile = 'config.json.bak';
+
+  /// 写入配置：先留一份上一版到 .bak，再原子写入，避免损坏或丢失
   Future<void> _saveConfigFile() async {
     final file = File('${_dataDir.path}/${AppConstants.configFile}');
+    try {
+      if (await file.exists()) {
+        await file.copy('${_dataDir.path}/$_configBackupFile');
+      }
+    } catch (_) {}
     await _writeAtomic(file, json.encode(_config));
   }
 
@@ -218,9 +227,17 @@ class StorageService {
         try {
           final content = await entity.readAsString();
           final list = json.decode(content) as List<dynamic>;
-          result.addAll(list.map((e) => fromJson(e as Map<String, dynamic>)));
+          // 单条记录解析失败只跳过这一条，绝不连累整年数据
+          for (final e in list) {
+            try {
+              result.add(fromJson(e as Map<String, dynamic>));
+            } catch (_) {
+              _badRecords++;
+              loadErrors.add('$name 中 1 条记录解析失败（已跳过）');
+            }
+          }
         } catch (_) {
-          // 单个分片读不出来时保留原文件（改名 .bad），
+          // 整个文件读不出来（损坏）时保留原文件（改名 .bad），
           // 绝不能让它被后续保存逻辑当作“无数据”清理掉
           await _quarantine(entity);
         }
@@ -233,6 +250,11 @@ class StorageService {
 
   /// 读取失败的文件列表（供界面提示“从备份恢复”）
   final List<String> loadErrors = [];
+
+  /// 解析失败被跳过的记录数
+  int _badRecords = 0;
+
+  int get badRecordCount => _badRecords;
 
   /// 读取失败的文件改名保留为 .bad，避免被后续保存覆盖或清理
   Future<void> _quarantine(File file) async {
@@ -306,22 +328,70 @@ class StorageService {
     return json.encode(data);
   }
 
+  /// 读取配置：主文件缺失/损坏/被清空时自动回退到上一版备份，
+  /// 避免“一次读取失败 → 空配置写回 → 全部设置变默认”的连锁丢失。
   Future<void> _loadConfig() async {
     final file = File('${_dataDir.path}/${AppConstants.configFile}');
-    if (!await file.exists()) return;
-    try {
-      final content = await file.readAsString();
-      final decoded = json.decode(content);
-      if (decoded is Map<String, dynamic>) {
-        _config = decoded;
+    final backup = File('${_dataDir.path}/$_configBackupFile');
+
+    if (await file.exists()) {
+      try {
+        final content = await file.readAsString();
+        final decoded = json.decode(content);
+        if (decoded is Map<String, dynamic> && decoded.isNotEmpty) {
+          _config = decoded;
+          return;
+        }
+        // 空配置视为异常（多半是上一次读取失败后写回的空对象），
+        // 不直接采信，继续尝试备份文件
+      } catch (_) {
+        await _quarantine(file);
       }
-    } catch (_) {
-      await _quarantine(file);
-      _config = {};
+    }
+
+    if (await backup.exists()) {
+      try {
+        final content = await backup.readAsString();
+        final decoded = json.decode(content);
+        if (decoded is Map<String, dynamic> && decoded.isNotEmpty) {
+          _config = decoded;
+          loadErrors.add('设置已从上一版配置备份恢复');
+          await _saveConfigFile(); // 立刻写回一份可用的主配置
+          return;
+        }
+      } catch (_) {
+        await _quarantine(backup);
+      }
     }
   }
 
   /// 重新从磁盘加载配置（后台引擎读取最新开关状态用）
+  /// 合并导入时补齐备份里有、本地缺失的配置键（不覆盖本地已有设置）
+  Future<void> mergeConfigMissing(Map<String, dynamic> remote) async {
+    var changed = false;
+    remote.forEach((k, v) {
+      if (k == 'last_remote_sha') return; // 同步游标属运行时状态
+      if (!_config.containsKey(k)) {
+        _config[k] = v;
+        changed = true;
+      }
+    });
+    if (changed) await _saveConfigFile();
+  }
+
+  /// 覆盖导入时用备份里的配置替换本地设置（保留同步游标）
+  Future<void> replaceConfig(Map<String, dynamic> remote) async {
+    final keepCursor = _config['last_remote_sha'];
+    final next = <String, dynamic>{};
+    remote.forEach((k, v) {
+      if (k == 'last_remote_sha') return;
+      next[k] = v;
+    });
+    if (keepCursor != null) next['last_remote_sha'] = keepCursor;
+    _config = next;
+    await _saveConfigFile();
+  }
+
   Future<void> reloadConfig() async {
     await _loadConfig();
   }
@@ -335,9 +405,19 @@ class StorageService {
     try {
       final content = await file.readAsString();
       final List<dynamic> jsonList = json.decode(content) as List<dynamic>;
-      return jsonList.map((e) => fromJson(e as Map<String, dynamic>)).toList();
+      final out = <T>[];
+      // 单条记录异常只跳过该条，不丢弃整份文件
+      for (final e in jsonList) {
+        try {
+          out.add(fromJson(e as Map<String, dynamic>));
+        } catch (_) {
+          _badRecords++;
+          loadErrors.add('$filename 中 1 条记录解析失败（已跳过）');
+        }
+      }
+      return out;
     } catch (e) {
-      // 读不出来则保留原文件再返回空，交由上层决定是否写默认值
+      // 整份文件读不出来才隔离保留，交由上层决定是否写默认值
       await _quarantine(file);
       return [];
     }

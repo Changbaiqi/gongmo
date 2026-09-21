@@ -5,6 +5,8 @@
 // 说明：当前主要作为默认数据保留，记账表单尚未选择账户
 // ============================================================
 
+import '../../core/utils/safe_json.dart';
+
 /// 支付账户
 class Account {
   final String id;
@@ -30,12 +32,9 @@ class Account {
       name: json['name'] as String,
       initialBalance: (json['initialBalance'] as num?)?.toDouble() ?? 0,
       createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'] as String)
+          ? safeDate(json['createdAt'], fallback: DateTime.now())
           : DateTime.now(),
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.tryParse(json['updatedAt'] as String) ??
-              DateTime.fromMillisecondsSinceEpoch(0)
-          : DateTime.fromMillisecondsSinceEpoch(0),
+      updatedAt: safeDate(json['updatedAt']),
     );
   }
 
