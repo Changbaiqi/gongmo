@@ -367,6 +367,73 @@ void main() {
     expect(pkgs, contains('com.cmbchina.ccd.pluto.cmbActivity'));
   });
 
+  test('跨平台同金额短时间只记一笔（支付宝+银行）', () {
+    final at = DateTime(2026, 9, 20, 12, 0, 0);
+    final existing = FinanceEntry(
+      id: 'e1',
+      type: FinanceType.expense,
+      amount: 38.00,
+      categoryId: 'exp_5',
+      description: '自动记账 · 支付宝',
+      date: at,
+      notificationSrc: 'alipay',
+    );
+    // 30 秒后招商银行的同金额通知 → 视为同一笔
+    expect(
+      AutoBookkeepingService.isCrossAppDuplicate(
+        type: FinanceType.expense,
+        amount: 38.00,
+        appKey: 'cmb',
+        at: at.add(const Duration(seconds: 30)),
+        candidates: [existing],
+      ),
+      isTrue,
+    );
+    // 同一应用 → 不合并（可能是两笔）
+    expect(
+      AutoBookkeepingService.isCrossAppDuplicate(
+        type: FinanceType.expense,
+        amount: 38.00,
+        appKey: 'alipay',
+        at: at.add(const Duration(seconds: 5)),
+        candidates: [existing],
+      ),
+      isFalse,
+    );
+    // 超过时间窗 → 不合并
+    expect(
+      AutoBookkeepingService.isCrossAppDuplicate(
+        type: FinanceType.expense,
+        amount: 38.00,
+        appKey: 'cmb',
+        at: at.add(const Duration(minutes: 5)),
+        candidates: [existing],
+      ),
+      isFalse,
+    );
+    // 金额不同 / 方向不同 → 不合并
+    expect(
+      AutoBookkeepingService.isCrossAppDuplicate(
+        type: FinanceType.expense,
+        amount: 39.00,
+        appKey: 'cmb',
+        at: at.add(const Duration(seconds: 10)),
+        candidates: [existing],
+      ),
+      isFalse,
+    );
+    expect(
+      AutoBookkeepingService.isCrossAppDuplicate(
+        type: FinanceType.income,
+        amount: 38.00,
+        appKey: 'cmb',
+        at: at.add(const Duration(seconds: 10)),
+        candidates: [existing],
+      ),
+      isFalse,
+    );
+  });
+
   test('解析微信自动续费扣款', () {
     final r = AutoBookkeepingService.parseWechat('[3条]微信支付: 已续费￥19.00');
     expect(r, isNotNull);
