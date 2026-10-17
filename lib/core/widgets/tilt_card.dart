@@ -141,8 +141,11 @@ class _TiltCardState extends State<TiltCard>
     if (!widget.enabled) return;
     if (state == AppLifecycleState.resumed) {
       _listen();
-    } else {
-      // 退到后台时停止监听传感器并回正，避免耗电
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // 真正退到后台才停止监听传感器省电；
+      // inactive（下拉通知栏、任务切换预览）不要停，
+      // 否则每次拉通知栏卡片都会“回正再倾斜”，看起来像动画重播
       _stopListen();
     }
   }
@@ -193,8 +196,8 @@ class _TiltCardState extends State<TiltCard>
     _sub?.cancel();
     _sub = null;
     _listening = false;
-    _target = Offset.zero;
-    if (!_ticker.isActive) _ticker.start();
+    // 不回正：保留最后一次倾斜状态，回到前台时从原位置继续，
+    // 避免切后台再回来时卡片“重新倾斜”的动画重播
   }
 
   void _onData(AccelerometerEvent e) {
