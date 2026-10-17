@@ -82,9 +82,6 @@ class AutoBookkeepingService {
   final _uuid = const Uuid();
   bool _listening = false;
 
-  /// 当前监听服务是否以前台（带常驻通知）方式运行
-  bool? _listeningForeground;
-
   bool get enabled => _storage.getConfig('auto_accounting') == true;
 
   /// 是否自动记录退款（默认开启）
@@ -157,38 +154,30 @@ class AutoBookkeepingService {
   /// 开启监听（需已授予通知使用权限）
   Future<void> start() async {
     if (_listening) return;
-    final foreground = !(await _menuForegroundRunning());
+    // 始终以前台服务方式运行：小米/红米等 ROM 会很快回收普通后台服务。
+    // 之前为了“少一条常驻通知”，在截屏菜单常驻时改用后台服务，
+    // 结果用一段时间后监听服务被系统杀掉、自动记账就失效了。
     await NotificationsListener.initialize(
       callbackHandle: autoBookkeepingNotificationHandler,
     );
     await NotificationsListener.registerEventHandle(
         autoBookkeepingNotificationHandler);
     await NotificationsListener.startService(
-      foreground: foreground,
+      foreground: true,
       title: '工墨自动记账',
       subTitle: '正在监听通知并自动记录收支',
       showWhen: false,
     );
     _listening = true;
-    _listeningForeground = foreground;
   }
 
-  /// 截屏记账菜单是否已作为前台服务常驻（此时无需重复占用常驻通知）
-  Future<bool> _menuForegroundRunning() async {
-    try {
-      return await ScreenshotMenuService.instance.isMenuNotificationRunning();
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// 菜单开关变化后调用：让监听服务的常驻通知与菜单保持一致
+  /// 菜单开关变化后调用：监听始终以前台方式运行，只需确保服务没被杀
   Future<void> refreshForegroundMode() async {
     if (!enabled) return;
-    final wantForeground = !(await _menuForegroundRunning());
-    if (_listening && _listeningForeground == wantForeground) return;
+    final running = await isRunning();
+    if (running) return;
+    _listening = false;
     try {
-      await stop();
       await start();
     } catch (_) {}
   }
@@ -196,7 +185,6 @@ class AutoBookkeepingService {
   /// 停止监听（关闭开关时调用）
   Future<void> stop() async {
     _listening = false;
-    _listeningForeground = null;
     try {
       await NotificationsListener.stopService();
     } catch (_) {}
@@ -323,12 +311,22 @@ class AutoBookkeepingService {
     await _storage.init();
     final queue = await _storage.readAutoQueue();
     if (queue.isEmpty) return;
-    await _storage.writeAutoQueue(const []);
+    // 先入账、落盘成功后再清空队列：保存失败时下次还能重试，
+    // 不会出现“队列清了但账目没写进去”的自动记账失效
+    final existing = _storage.financeEntries.map((e) => e.id).toSet();
     for (final map in queue) {
       try {
         final entry = FinanceEntry.fromJson(map);
+        if (existing.contains(entry.id)) continue; // 已入账，跳过避免重复
         _financeRepo.save(entry);
+        existing.add(entry.id);
       } catch (_) {}
+    }
+    try {
+      await _storage.saveFinanceEntries();
+      await _storage.writeAutoQueue(const []);
+    } catch (_) {
+      // 落盘失败：保留队列，下次启动再试
     }
   }
 

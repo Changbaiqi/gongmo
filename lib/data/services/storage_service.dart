@@ -6,6 +6,7 @@
 //       方法修改；每次落盘触发 onDataChanged → SyncController 自动同步
 // ============================================================
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -269,14 +270,42 @@ class StorageService {
     }
   }
 
-  /// 原子写入：先写 .tmp 再改名，避免进程被杀时留下半个文件导致读取失败
+  /// 同一文件的写入串行化，避免并发写共用临时文件导致 rename 失败
+  static final Map<String, Future<void>> _writeLocks = {};
+  static int _tmpSeq = 0;
+
+  /// 原子写入：先写「唯一」临时文件再改名。
+  ///
+  /// 关键点（线上问题修复）：
+  /// 1. 临时文件名必须唯一：并发保存曾共用 `xxx.json.tmp`，一方 rename 后
+  ///    另一方 rename 直接失败，导致自动记账的账目写不进去；
+  /// 2. 同一文件写入串行化，避免相互覆盖；
+  /// 3. 先写 tmp 再直接 rename（Linux/Android 上会原子替换目标），
+  ///    不再先删除目标文件，杜绝“删了但没写回”的丢数据窗口。
   Future<void> _writeAtomic(File file, String content) async {
-    final tmp = File('${file.path}.tmp');
-    await tmp.writeAsString(content, flush: true);
+    final key = file.path;
+    final previous = _writeLocks[key] ?? Future<void>.value();
+    final done = Completer<void>();
+    _writeLocks[key] = done.future;
     try {
-      if (await file.exists()) await file.delete();
-    } catch (_) {}
-    await tmp.rename(file.path);
+      await previous;
+      final tmp = File('${file.path}.${++_tmpSeq}.tmp');
+      await tmp.writeAsString(content, flush: true);
+      try {
+        await tmp.rename(file.path);
+      } catch (_) {
+        // 极少数文件系统不支持覆盖改名：退化为复制后再删临时文件
+        await tmp.copy(file.path);
+        try {
+          await tmp.delete();
+        } catch (_) {}
+      }
+    } finally {
+      done.complete();
+      if (identical(_writeLocks[key], done.future)) {
+        _writeLocks.remove(key);
+      }
+    }
   }
 
   /// 读取轻量配置项（存储在 config.json）
