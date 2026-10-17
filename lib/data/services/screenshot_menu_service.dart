@@ -182,12 +182,21 @@ class ScreenshotMenuService {
   }
 }
 
-/// 无障碍服务识别到的一笔微信红包收款
+/// 无障碍服务识别到的一笔微信红包/转账收款
 class RedPacketRecord {
-  const RedPacketRecord({required this.amount, required this.time});
+  const RedPacketRecord({
+    required this.amount,
+    required this.time,
+    required this.kind,
+  });
 
   final double amount;
   final DateTime time;
+
+  /// redpacket=红包，transfer=转账收款
+  final String kind;
+
+  bool get isTransfer => kind == 'transfer';
 
   factory RedPacketRecord.fromMap(Map<dynamic, dynamic> map) {
     final amount = (map['amount'] as num?)?.toDouble() ?? 0;
@@ -197,6 +206,7 @@ class RedPacketRecord {
       time: ms > 0
           ? DateTime.fromMillisecondsSinceEpoch(ms)
           : DateTime.now(),
+      kind: '${map['kind'] ?? 'redpacket'}',
     );
   }
 }

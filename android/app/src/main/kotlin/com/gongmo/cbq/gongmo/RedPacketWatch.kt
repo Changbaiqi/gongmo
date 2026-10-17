@@ -17,6 +17,7 @@ object RedPacketWatch {
     private const val KEY_PENDING_TIME = "pending_time"
     private const val KEY_LAST_AMOUNT = "last_amount"
     private const val KEY_LAST_AT = "last_at"
+    private const val KEY_PENDING_KIND = "pending_kind"
     private const val DEDUP_WINDOW_MS = 15_000L
 
     /** 功能是否开启（由设置页开关通过 MethodChannel 写入） */
@@ -27,8 +28,8 @@ object RedPacketWatch {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
     }
 
-    /** 记录一笔刚领取的红包金额；重复事件会被忽略 */
-    fun report(context: Context, amount: Double) {
+    /** 记录一笔刚领取的红包/转账；重复事件会被忽略 */
+    fun report(context: Context, amount: Double, kind: String = "redpacket") {
         if (amount <= 0 || amount > 2000) return
         val sp = prefs(context)
         val now = System.currentTimeMillis()
@@ -42,21 +43,24 @@ object RedPacketWatch {
             .putFloat(KEY_LAST_AMOUNT, amount.toFloat())
             .putFloat(KEY_PENDING_AMOUNT, amount.toFloat())
             .putLong(KEY_PENDING_TIME, now)
+            .putString(KEY_PENDING_KIND, kind)
             .apply()
     }
 
-    /** Flutter 侧取走待记账红包（金额 + 领取时间戳，毫秒） */
+    /** Flutter 侧取走待记账记录（金额 + 类型 + 时间戳，毫秒） */
     fun consume(context: Context): Map<String, Any>? {
         val sp = prefs(context)
         if (!sp.contains(KEY_PENDING_AMOUNT)) return null
         val amount = sp.getFloat(KEY_PENDING_AMOUNT, 0f).toDouble()
         val time = sp.getLong(KEY_PENDING_TIME, 0L)
+        val kind = sp.getString(KEY_PENDING_KIND, "redpacket") ?: "redpacket"
         sp.edit()
             .remove(KEY_PENDING_AMOUNT)
             .remove(KEY_PENDING_TIME)
+            .remove(KEY_PENDING_KIND)
             .apply()
         if (amount <= 0) return null
-        return mapOf("amount" to amount, "time" to time)
+        return mapOf("amount" to amount, "time" to time, "kind" to kind)
     }
 
     private fun prefs(context: Context) =

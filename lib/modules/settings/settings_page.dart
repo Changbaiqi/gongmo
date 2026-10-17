@@ -1243,12 +1243,12 @@ class _AutoAccountingCardState extends State<_AutoAccountingCard>
                                 secondary: Icon(Icons.redeem_rounded,
                                     color: cs.primary, size: 20),
                                 dense: true,
-                                title: const Text('微信红包自动记账',
+                                title: const Text('微信红包/转账自动记账',
                                     style: TextStyle(fontSize: 13.5)),
                                 subtitle: Text(
                                   widget.ctrl.autoRedPacket.value
-                                      ? '已开启：拆开红包后自动记为收入（需无障碍服务）'
-                                      : '识别「已存入零钱」页面，自动记录红包金额',
+                                      ? '已开启：拆红包/收转账后自动记为收入（需无障碍服务）'
+                                      : '识别「已存入零钱 / 已收款」页面，自动记录金额',
                                   style: TextStyle(
                                       fontSize: 11,
                                       color: cs.onSurfaceVariant

@@ -13,6 +13,7 @@ import '../models/finance_entry.dart';
 import '../repositories/finance_repository.dart';
 import '../../modules/dashboard/dashboard_controller.dart';
 import '../../modules/finance/finance_controller.dart';
+import 'app_log_service.dart';
 import 'screenshot_menu_service.dart';
 import 'storage_service.dart';
 
@@ -106,12 +107,13 @@ class AutoBookkeepingService {
       final record =
           await ScreenshotMenuService.instance.consumePendingRedPacket();
       if (record == null || record.amount <= 0) return;
+      final label = record.isTransfer ? '微信转账' : '微信红包';
       final entry = FinanceEntry(
         id: _uuid.v4(),
         type: FinanceType.income,
         amount: record.amount,
         categoryId: 'inc_3',
-        description: '自动记账 · 微信红包',
+        description: '自动记账 · $label',
         date: record.time,
         notificationSrc: 'wechat',
       );
@@ -124,7 +126,8 @@ class AutoBookkeepingService {
         Get.find<DashboardController>(tag: 'dashboard').refreshData();
       } catch (_) {}
       if (Get.context != null) {
-        Get.snackbar('已记录微信红包', '收入 ${record.amount.toStringAsFixed(2)} 元');
+        Get.snackbar('已记录$label',
+            '收入 ${record.amount.toStringAsFixed(2)} 元');
       }
     } catch (_) {
       // 单条红包处理失败不影响其它功能
@@ -276,10 +279,34 @@ class AutoBookkeepingService {
       final isRefund = full.contains('退款') || full.contains('退回');
       if (isRefund && !refundEnabled) return;
 
+      // 跨平台去重：用支付宝+银行卡付款时两边都会发通知，
+      // 金额相同、方向相同且时间很近时只记录一笔
+      bool duplicated(Iterable<FinanceEntry> list) => isCrossAppDuplicate(
+            type: type,
+            amount: amount,
+            appKey: app.key,
+            at: DateTime.now(),
+            candidates: list,
+          );
+      if (duplicated(_storage.financeEntries)) {
+        AppLogService.write('AUTOBOOK', '跳过跨平台重复通知：${app.name} $amount');
+        return;
+      }
+      final queueNow = await _storage.readAutoQueue();
+      for (final map in queueNow) {
+        try {
+          if (duplicated([FinanceEntry.fromJson(map)])) {
+            AppLogService.write(
+                'AUTOBOOK', '跳过跨平台重复通知（待入队）：${app.name} $amount');
+            return;
+          }
+        } catch (_) {}
+      }
+
       // 去重：同一笔交易常发多条通知（横幅 + 常驻）
       final dedupKey =
           '$pkg|$full|${DateTime.now().millisecondsSinceEpoch ~/ 60000}';
-      final queue = await _storage.readAutoQueue();
+      final queue = queueNow;
       if (queue.any((e) => e['dedupKey'] == dedupKey)) return;
       while (queue.length >= _dedupeKeep) {
         queue.removeAt(0);
@@ -328,6 +355,28 @@ class AutoBookkeepingService {
     } catch (_) {
       // 落盘失败：保留队列，下次启动再试
     }
+  }
+
+  /// 判断是否与已有记录属于「同一笔支付」：跨应用、同方向、
+  /// 金额相差不超过 0.01、且发生在 [window] 之内。
+  ///
+  /// 场景：用支付宝付款但走银行卡，支付宝和银行 App 都会发通知，
+  /// 金额相同只是文案不同，需要只记一笔。
+  static bool isCrossAppDuplicate({
+    required FinanceType type,
+    required double amount,
+    required String appKey,
+    required DateTime at,
+    required Iterable<FinanceEntry> candidates,
+    Duration window = const Duration(seconds: 90),
+  }) {
+    for (final e in candidates) {
+      if (e.type != type) continue;
+      if (e.notificationSrc == appKey) continue; // 同一应用不合并
+      if ((e.amount - amount).abs() > 0.009) continue;
+      if (at.difference(e.date).abs() <= window) return true;
+    }
+    return false;
   }
 
   /// 解析应用通知文本，返回 (类型, 金额, 商户名?)

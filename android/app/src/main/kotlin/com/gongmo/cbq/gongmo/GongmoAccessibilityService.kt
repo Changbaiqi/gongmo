@@ -52,57 +52,63 @@ class GongmoAccessibilityService : AccessibilityService() {
             }
             val root = rootInActiveWindow ?: return
             val texts = collectTexts(root)
-            if (texts.none { it.contains("已存入零钱") }) return
-            val amount = extractAmount(texts) ?: return
-            RedPacketWatch.report(this, amount)
+            val marker = markerOf(texts) ?: return
+            val amount = amountAbove(texts, marker.first) ?: return
+            RedPacketWatch.report(this, amount, marker.second)
         } catch (_: Throwable) {
             // 任何异常都不能影响无障碍服务本身
         }
     }
 
-    /** 广度收集节点文本（含 contentDescription），限制数量避免卡顿 */
-    private fun collectTexts(root: android.view.accessibility.AccessibilityNodeInfo): List<String> {
-        val out = ArrayList<String>(32)
-        val queue = ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
-        queue.add(root)
-        var visited = 0
-        while (queue.isNotEmpty() && visited < 80) {
-            val node = queue.removeFirst()
-            visited++
+    /** 深度优先收集文本（尽可能按视觉从上到下的顺序），限制数量避免卡顿 */
+    private fun collectTexts(
+        root: android.view.accessibility.AccessibilityNodeInfo
+    ): List<String> {
+        val out = ArrayList<String>(48)
+
+        fun walk(node: android.view.accessibility.AccessibilityNodeInfo, depth: Int) {
+            if (out.size >= 140 || depth > 26) return
             node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { out.add(it) }
             node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
                 ?.let { out.add(it) }
             for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
+                node.getChild(i)?.let { walk(it, depth + 1) }
             }
         }
+
+        walk(root, 0)
         return out
     }
 
     /**
-     * 提取红包金额：
-     * 1. 优先找 "0.58元" 这类带「元」的文本；
-     * 2. 否则在存在「元」字样的页面上，取最大的纯数字节点
-     *    （红包金额不会超过 2000）。
+     * 找到收款标记：红包「已存入零钱」、转账「已收款/已收钱」。
+     * 返回（标记下标, 类型）。
      */
-    private fun extractAmount(texts: List<String>): Double? {
-        val withYuan = Regex("([0-9]+(?:\\.[0-9]{1,2})?)\\s*元")
-        for (t in texts) {
-            val m = withYuan.find(t) ?: continue
-            val v = m.groupValues[1].toDoubleOrNull() ?: continue
+    private fun markerOf(texts: List<String>): Pair<Int, String>? {
+        for ((i, t) in texts.withIndex()) {
+            if (t.contains("已存入零钱")) return i to "redpacket"
+            if (t.contains("已收款") || t.contains("已收钱")) return i to "transfer"
+        }
+        return null
+    }
+
+    /**
+     * 取标记上方最近的金额。
+     *
+     * 关键：红包/转账页面下方是"其它人的领取记录/交易记录"，
+     * 金额很多；自己的金额一定在「已存入零钱/已收款」上方，
+     * 因此从标记往回找第一个金额，避免取到别人的金额。
+     */
+    private fun amountAbove(texts: List<String>, markerIndex: Int): Double? {
+        val bare = Regex("^[0-9]+(?:\\.[0-9]{1,2})?$")
+        val withUnit = Regex("[¥￥]?\\s*([0-9]+(?:\\.[0-9]{1,2})?)\\s*元?$")
+        for (i in markerIndex - 1 downTo 0) {
+            val s = texts[i].trim()
+            val m = if (bare.matches(s)) s else withUnit.find(s)?.groupValues?.get(1)
+            val v = m?.toDoubleOrNull() ?: continue
             if (v > 0 && v <= 2000) return v
         }
-        if (texts.none { it.contains("元") }) return null
-        val bare = Regex("^[0-9]+(?:\\.[0-9]{1,2})?$")
-        var best: Double? = null
-        for (t in texts) {
-            val s = t.trim()
-            if (!bare.matches(s)) continue
-            val v = s.toDoubleOrNull() ?: continue
-            if (v <= 0 || v > 2000) continue
-            if (best == null || v > best) best = v
-        }
-        return best
+        return null
     }
 
     override fun onInterrupt() {}
